@@ -16,12 +16,8 @@ WORKDIR /app
 # ── Python dependencies ───────────────────────────────────────────
 COPY requirements.txt .
 
-# Install CPU-only PyTorch first (~200 MB instead of ~2.5 GB CUDA build).
-# pip skips the torch line in requirements.txt because the version is already met.
-RUN pip install --no-cache-dir \
-        torch==2.11.0 \
-        --index-url https://download.pytorch.org/whl/cpu
-
+# requirements.txt has --extra-index-url pointing to the torch CPU wheel
+# index, so pip automatically fetches torch==2.1.0+cpu (~200 MB, no CUDA).
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ── Application files ─────────────────────────────────────────────
