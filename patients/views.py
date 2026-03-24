@@ -722,7 +722,97 @@ def analytics(request):
     return Response(payload)
 
 
-# ── 7. Triage Dashboard (Emergency / Urgent Care) ─────────────────
+# ── 7. Predictive Analytics (per-patient ML) ──────────────────────
+@api_view(['GET'])
+def patient_predict(request, patient_id):
+    """
+    ML-powered 6-month risk forecast for a single patient.
+
+    Uses the trained LogisticRegression pipeline (models/risk_predictor.pkl)
+    for progression probability, and numpy.polyfit on recent lab/vitals
+    history for HbA1c and SBP trajectory projections.
+
+    Falls back to rule-based risk score when no trained model exists
+    (model_available: false in response).
+    """
+    from patients.ml_models import (
+        extract_features,
+        predict_hba1c_trajectory,
+        predict_sbp_trajectory,
+        load_risk_model,
+    )
+
+    try:
+        patient = Patient.objects.get(patient_id=patient_id)
+    except Patient.DoesNotExist:
+        return Response({'error': 'Patient not found'}, status=404)
+
+    observations = list(patient.observations.all())
+    conditions   = list(patient.conditions.all())
+
+    features_dict, features_arr = extract_features(patient, observations, conditions)
+
+    # ── Progression probability ──────────────────────────────────────
+    model         = load_risk_model()
+    model_available = model is not None
+
+    if model_available:
+        prob = float(model.predict_proba([features_arr])[0][1])
+    else:
+        # Fallback: normalise rule-based score to 0-1
+        from patients.risk_engine import assess_risk
+        result = assess_risk(patient, observations, conditions)
+        prob   = min(result.score / 100.0, 0.99)
+
+    # ── Trajectory predictions ────────────────────────────────────────
+    pred_hba1c, hba1c_trend, _ = predict_hba1c_trajectory(observations)
+    pred_sbp,   sbp_trend,   _ = predict_sbp_trajectory(observations)
+
+    # ── Overall trajectory ────────────────────────────────────────────
+    trends = {hba1c_trend, sbp_trend}
+    if 'worsening' in trends:
+        risk_trajectory = 'worsening'
+    elif 'worsening' not in trends and 'improving' in trends and 'stable' not in trends:
+        risk_trajectory = 'improving'
+    else:
+        risk_trajectory = 'stable'
+
+    # ── Confidence ────────────────────────────────────────────────────
+    if not model_available:
+        confidence = 'low'
+    elif prob >= 0.75 or prob <= 0.25:
+        confidence = 'high'
+    elif prob >= 0.60 or prob <= 0.40:
+        confidence = 'medium'
+    else:
+        confidence = 'low'
+
+    # ── Recommendation ────────────────────────────────────────────────
+    if prob >= 0.70 or risk_trajectory == 'worsening':
+        recommendation = 'Immediate intervention recommended'
+    elif prob >= 0.40:
+        recommendation = 'Schedule follow-up within 30 days'
+    else:
+        recommendation = 'Continue current care plan'
+
+    return Response({
+        'patient_id':              patient_id,
+        'patient_name':            patient.full_name(),
+        'progression_probability': round(prob, 3),
+        'risk_trajectory':         risk_trajectory,
+        'predicted_hba1c_6mo':     pred_hba1c,
+        'predicted_sbp_6mo':       pred_sbp,
+        'hba1c_trend':             hba1c_trend,
+        'sbp_trend':               sbp_trend,
+        'trend_direction':         risk_trajectory,
+        'confidence':              confidence,
+        'recommendation':          recommendation,
+        'model_available':         model_available,
+        'features':                features_dict,
+    })
+
+
+# ── 8. Triage Dashboard (Emergency / Urgent Care) ─────────────────
 @api_view(['GET'])
 def triage_list(request):
     """
