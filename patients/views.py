@@ -56,9 +56,10 @@ def patient_search(request):
         terms = query.split()
         for term in terms:
             qs = qs.filter(
-                Q(first__icontains=term) |
-                Q(last__icontains=term)  |
-                Q(city__icontains=term)
+                Q(first__icontains=term)      |
+                Q(last__icontains=term)       |
+                Q(city__icontains=term)       |
+                Q(patient_id__icontains=term)
             )
 
     total = qs.count()
@@ -77,13 +78,31 @@ def patient_search(request):
 @api_view(['GET'])
 def patient_detail(request, patient_id):
     """Full patient profile with all related data."""
+    import time
+    from django.core.cache import cache
+
+    cache_key = f'patient_{patient_id}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached)
+
     try:
-        patient = Patient.objects.get(patient_id=patient_id)
+        t0 = time.time()
+        patient = Patient.objects.prefetch_related(
+            'observations', 'encounters', 'conditions', 'medications'
+        ).get(patient_id=patient_id)
+        print(f'[profile] patient+prefetch fetch: {time.time()-t0:.3f}s')
     except Patient.DoesNotExist:
         return Response({'error': 'Patient not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    t1 = time.time()
     serializer = PatientDetailSerializer(patient)
-    return Response(serializer.data)
+    data = serializer.data
+    print(f'[profile] serialization: {time.time()-t1:.3f}s')
+    print(f'[profile] total (uncached): {time.time()-t0:.3f}s')
+
+    cache.set(cache_key, data, 300)
+    return Response(data)
 
 
 # ── 3. Risk Assessment ────────────────────────────────────────────
@@ -92,31 +111,51 @@ def patient_risk(request, patient_id):
     """
     Run the risk engine for a patient and return structured result.
     Used to drive the dashboard risk card.
+    Cached 10 min per patient; prefetches observations+conditions in
+    one shot to avoid separate lazy queries inside assess_risk.
     """
+    import time
+    from django.core.cache import cache
+
+    cache_key = f'patient_risk_{patient_id}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached)
+
     try:
-        patient = Patient.objects.get(patient_id=patient_id)
+        t0 = time.time()
+        patient = Patient.objects.prefetch_related(
+            'observations', 'conditions'
+        ).get(patient_id=patient_id)
+        print(f'[risk] patient+prefetch fetch: {time.time()-t0:.3f}s')
     except Patient.DoesNotExist:
         return Response({'error': 'Patient not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    observations = Observation.objects.filter(patient=patient)
-    conditions   = Condition.objects.filter(patient=patient)
+    # Use prefetch cache — do NOT pass fresh Observation/Condition querysets
+    t1 = time.time()
+    observations = patient.observations.all()
+    conditions   = patient.conditions.all()
 
     result = assess_risk(patient, observations, conditions)
+    print(f'[risk] assess_risk (in-memory): {time.time()-t1:.3f}s')
+    print(f'[risk] total (uncached): {time.time()-t0:.3f}s')
 
-    return Response({
-        'patient_id':          patient.patient_id,
-        'patient_name':        patient.full_name(),
-        'tier':                result.tier,
-        'score':               result.score,
-        'reasons':             result.reasons,
-        'hba1c_days_gap':      result.hba1c_days_gap,
-        'hba1c_value':         result.hba1c_value,
-        'latest_sbp':          result.latest_sbp,
-        'has_diabetes':        result.has_diabetes,
-        'has_hypertension':    result.has_hypertension,
-        'recommended_action':  result.recommended_action,
+    payload = {
+        'patient_id':            patient.patient_id,
+        'patient_name':          patient.full_name(),
+        'tier':                  result.tier,
+        'score':                 result.score,
+        'reasons':               result.reasons,
+        'hba1c_days_gap':        result.hba1c_days_gap,
+        'hba1c_value':           result.hba1c_value,
+        'latest_sbp':            result.latest_sbp,
+        'has_diabetes':          result.has_diabetes,
+        'has_hypertension':      result.has_hypertension,
+        'recommended_action':    result.recommended_action,
         'followup_urgency_days': result.followup_urgency_days,
-    })
+    }
+    cache.set(cache_key, payload, 600)
+    return Response(payload)
 
 
 # ── 4. Urgent Care Finder (HIGH risk only) ────────────────────────
@@ -798,6 +837,9 @@ def patient_predict(request, patient_id):
     return Response({
         'patient_id':              patient_id,
         'patient_name':            patient.full_name(),
+        'cohort':                  patient.cohort,
+        'age':                     patient.age,
+        'gender':                  patient.gender,
         'progression_probability': round(prob, 3),
         'risk_trajectory':         risk_trajectory,
         'predicted_hba1c_6mo':     pred_hba1c,

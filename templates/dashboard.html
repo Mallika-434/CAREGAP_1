@@ -1534,11 +1534,14 @@
               <h3 style="color:var(--text);font-size:1rem;font-weight:600;margin-bottom:6px">6-Month Risk Prediction</h3>
               <p style="color:var(--text2);font-size:.85rem;margin-bottom:16px">Enter a patient ID from the chronic cohort</p>
               <input id="pred-patient-id" type="text"
-                     placeholder="e.g. abc-123-def"
-                     style="width:100%;padding:10px;margin-bottom:10px;
+                     placeholder="Enter Patient ID or search by name"
+                     style="width:100%;padding:10px;margin-bottom:6px;
                             background:var(--bg3);color:var(--text);
                             border:1px solid var(--border2);border-radius:6px;
                             font-family:inherit;font-size:.88rem;outline:none">
+              <div style="font-size:.75rem;color:var(--text3);margin-bottom:10px">
+                Tip: Copy patient ID from Patient Search
+              </div>
               <button onclick="runPrediction()"
                       style="width:100%;padding:10px;
                              background:var(--accent);color:#000;
@@ -1841,6 +1844,9 @@
         ${followupHTML}
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
           ${urgentCareBtn}
+          <button class="btn btn-outline" onclick="runPredictionForPatient('${pid}')">
+            &#x1F4CA; Run 6-Month Prediction
+          </button>
         </div>
       </div>
     </div>
@@ -2383,6 +2389,18 @@
       loadPatient(pid);
     }
 
+    function runPredictionForPatient(pid) {
+      // Navigate to Analytics Explorer → Predictive Modeling tab
+      showSection('explorer', document.getElementById('nav-explorer'));
+      showExplorerTab('predictive');
+      // Pre-fill the patient ID input and run
+      const input = document.getElementById('pred-patient-id');
+      if (input) {
+        input.value = pid;
+        runPrediction();
+      }
+    }
+
     // ─── Analytics Explorer ───
     let _expCharts = [];
 
@@ -2614,7 +2632,20 @@
                       : '#f59e0b';
           const arrow = d.trend_direction === 'worsening' ? '↑'
                       : d.trend_direction === 'improving' ? '↓' : '→';
+          const cohortLabel = { chronic:'Chronic', at_risk:'At Risk', pediatric:'Pediatric', deceased:'Deceased' };
           res.innerHTML = `
+            <div style="background:var(--bg3);padding:14px 16px;border-radius:8px;
+                        border:1px solid var(--border2);margin-bottom:14px">
+              <div style="font-size:.95rem;font-weight:600;color:var(--text);margin-bottom:4px">
+                ${d.patient_name || d.patient_id}
+              </div>
+              <div style="font-size:.78rem;color:var(--text3)">
+                ID: ${d.patient_id}&nbsp;&nbsp;·&nbsp;&nbsp;${d.age != null ? d.age + 'y' : ''}${d.age != null && d.gender ? ' · ' : ''}${d.gender || ''}
+              </div>
+              ${d.cohort ? `<div style="font-size:.75rem;color:var(--text3);margin-top:3px">
+                Cohort: ${cohortLabel[d.cohort] || d.cohort}
+              </div>` : ''}
+            </div>
             <div style="background:var(--bg3);padding:16px;
                         border-radius:8px;border:1px solid var(--border2)">
               <div style="font-size:2em;font-weight:700;color:${color}">
