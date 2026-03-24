@@ -206,9 +206,23 @@ def dashboard_stats(request):
     from django.db.models import Exists, OuterRef
 
     cached = cache.get('dashboard_stats')
+    print(f'[stats] cache GET dashboard_stats → {"HIT" if cached is not None else "MISS"}')
     if cached is not None:
         return Response(cached)
 
+    # Guard against cache stampede: if another request is already computing,
+    # wait briefly then re-check before starting a full second computation.
+    if cache.get('dashboard_stats_computing'):
+        print('[stats] another request is computing — waiting up to 60s for it to finish')
+        for _ in range(12):
+            time.sleep(5)
+            cached = cache.get('dashboard_stats')
+            if cached is not None:
+                print('[stats] cache populated by other request — returning cached result')
+                return Response(cached)
+        print('[stats] wait timed out — running computation anyway')
+
+    cache.set('dashboard_stats_computing', True, 120)   # 2-min lock
     t0 = time.monotonic()
 
     def _elapsed():
@@ -516,9 +530,199 @@ def dashboard_stats(request):
         'diabetes_rate':     diabetes_rate,
         'cohort_counts':     payload['cohort_counts'],
     }, 600)
+    cache.delete('dashboard_stats_computing')   # release lock
     return Response(payload)
 
-# ── 6. Triage Dashboard (Emergency / Urgent Care) ─────────────────
+# ── 6. Analytics Explorer ─────────────────────────────────────────
+@api_view(['GET'])
+def analytics(request):
+    """
+    Flexible population analytics with user-defined filters.
+    Params: cohort, gender, age_min, age_max, condition
+    Returns: count, hba1c_dist, bp_dist, age_dist, top_conditions
+    Cached 10 minutes per unique filter combination.
+    All raw SQL uses patient_id (UUID string), not id (integer),
+    because all FK relations use to_field='patient_id'.
+    """
+    import hashlib, json
+    from django.core.cache import cache
+    from django.db import connection
+    from datetime import date as _date
+
+    cohort    = request.GET.get('cohort',    '').strip()
+    gender    = request.GET.get('gender',    '').strip()
+    age_min   = request.GET.get('age_min',   '').strip()
+    age_max   = request.GET.get('age_max',   '').strip()
+    condition = request.GET.get('condition', '').strip()
+
+    cache_key = 'analytics_' + hashlib.md5(
+        json.dumps(sorted({
+            'c': cohort, 'g': gender, 'ai': age_min,
+            'ax': age_max, 'cd': condition,
+        }.items())).encode()
+    ).hexdigest()
+
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached)
+
+    # ── Build patient WHERE clause (alias p) ──────────────────────
+    clauses = []
+    params  = []
+
+    if cohort == 'deceased':
+        clauses.append('p.is_deceased = 1')
+    else:
+        clauses.append('p.is_deceased = 0')
+        if cohort in ('chronic', 'at_risk', 'pediatric'):
+            clauses.append('p.cohort = %s')
+            params.append(cohort)
+
+    if gender in ('M', 'F'):
+        clauses.append('p.gender = %s')
+        params.append(gender)
+
+    today = _date.today()
+    if age_min.isdigit():
+        n = int(age_min)
+        try:
+            bdate_max = today.replace(year=today.year - n)
+        except ValueError:                          # Feb 29 in non-leap year
+            bdate_max = today.replace(year=today.year - n, month=2, day=28)
+        clauses.append('p.birthdate <= %s')
+        params.append(bdate_max.isoformat())
+
+    if age_max.isdigit():
+        n = int(age_max)
+        try:
+            bdate_min = today.replace(year=today.year - n - 1)
+        except ValueError:
+            bdate_min = today.replace(year=today.year - n - 1, month=2, day=28)
+        clauses.append('p.birthdate >= %s')
+        params.append(bdate_min.isoformat())
+
+    if condition in ('hypertension', 'diabetes'):
+        codes = (Condition.HYPERTENSION_CODES if condition == 'hypertension'
+                 else Condition.DIABETES_CODES)
+        phs = ','.join(['%s'] * len(codes))
+        clauses.append(f"""p.patient_id IN (
+            SELECT DISTINCT patient_id FROM patients_condition
+            WHERE  code IN ({phs}) AND stop IS NULL
+        )""")
+        params.extend(codes)
+
+    where = ' AND '.join(clauses) if clauses else '1=1'
+
+    # ── Patient count ─────────────────────────────────────────────
+    with connection.cursor() as cur:
+        cur.execute(
+            f'SELECT COUNT(*) FROM patients_patient p WHERE {where}', params
+        )
+        count = cur.fetchone()[0]
+
+    # ── HbA1c distribution (ROW_NUMBER → latest per patient) ──────
+    hba1c_dist = {'normal': 0, 'prediabetes': 0, 'diabetes': 0}
+    with connection.cursor() as cur:
+        cur.execute(f"""
+            SELECT value FROM (
+                SELECT o.value,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY o.patient_id ORDER BY o.date DESC
+                       ) AS rn
+                FROM   patients_observation o
+                WHERE  o.code = %s
+                  AND  o.patient_id IN (
+                      SELECT p.patient_id FROM patients_patient p WHERE {where}
+                  )
+            ) WHERE rn = 1
+        """, [Observation.LOINC_HBA1C] + params)
+        for (raw,) in cur.fetchall():
+            try:
+                v = float(raw)
+                if   v < 5.7: hba1c_dist['normal']      += 1
+                elif v < 6.5: hba1c_dist['prediabetes']  += 1
+                else:         hba1c_dist['diabetes']     += 1
+            except (ValueError, TypeError):
+                pass
+
+    # ── BP distribution ───────────────────────────────────────────
+    bp_dist = {'normal': 0, 'elevated': 0, 'stage1': 0, 'stage2': 0}
+    with connection.cursor() as cur:
+        cur.execute(f"""
+            SELECT value FROM (
+                SELECT o.value,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY o.patient_id ORDER BY o.date DESC
+                       ) AS rn
+                FROM   patients_observation o
+                WHERE  o.code = %s
+                  AND  o.patient_id IN (
+                      SELECT p.patient_id FROM patients_patient p WHERE {where}
+                  )
+            ) WHERE rn = 1
+        """, [Observation.LOINC_SBP] + params)
+        for (raw,) in cur.fetchall():
+            try:
+                v = float(raw)
+                if   v < 120: bp_dist['normal']   += 1
+                elif v < 130: bp_dist['elevated']  += 1
+                elif v < 140: bp_dist['stage1']    += 1
+                else:         bp_dist['stage2']    += 1
+            except (ValueError, TypeError):
+                pass
+
+    # ── Age distribution (approximate — year difference) ──────────
+    # Use a Python variable for current year to avoid % conflict in f-string
+    age_dist = {'0-18': 0, '19-35': 0, '36-50': 0, '51-65': 0, '65+': 0}
+    current_year = _date.today().year
+    with connection.cursor() as cur:
+        cur.execute(f"""
+            SELECT {current_year}
+                   - CAST(strftime('%%Y', p.birthdate) AS INT) AS approx_age
+            FROM   patients_patient p
+            WHERE  {where} AND p.birthdate IS NOT NULL
+        """, params)
+        for (age,) in cur.fetchall():
+            if age is None:  continue
+            if   age <= 18:  age_dist['0-18']  += 1
+            elif age <= 35:  age_dist['19-35'] += 1
+            elif age <= 50:  age_dist['36-50'] += 1
+            elif age <= 65:  age_dist['51-65'] += 1
+            else:            age_dist['65+']   += 1
+
+    # ── Top 5 active conditions ────────────────────────────────────
+    with connection.cursor() as cur:
+        cur.execute(f"""
+            SELECT c.description, COUNT(DISTINCT c.patient_id) AS cnt
+            FROM   patients_condition c
+            WHERE  c.stop IS NULL
+              AND  c.patient_id IN (
+                  SELECT p.patient_id FROM patients_patient p WHERE {where}
+              )
+            GROUP  BY c.description
+            ORDER  BY cnt DESC
+            LIMIT  5
+        """, params)
+        top_conditions = [
+            {'name': row[0], 'count': row[1]} for row in cur.fetchall()
+        ]
+
+    payload = {
+        'count':          count,
+        'hba1c_dist':     hba1c_dist,
+        'bp_dist':        bp_dist,
+        'age_dist':       age_dist,
+        'top_conditions': top_conditions,
+        'filters': {
+            'cohort': cohort, 'gender': gender,
+            'age_min': age_min, 'age_max': age_max, 'condition': condition,
+        },
+    }
+    cache.set(cache_key, payload, 600)
+    return Response(payload)
+
+
+# ── 7. Triage Dashboard (Emergency / Urgent Care) ─────────────────
 @api_view(['GET'])
 def triage_list(request):
     """

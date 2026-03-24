@@ -1405,54 +1405,109 @@
 
       <!-- ═══ SECTION: ANALYTICS EXPLORER ═══ -->
       <div id="sec-explorer" class="section active">
-        <div class="view-header" style="margin-bottom: 24px;">
+        <div class="ph" style="margin-bottom:20px">
           <h2>Analytics Explorer</h2>
-          <p>Multidimensional data exploration & predictive insights based on patient criteria.</p>
+          <p>Filter the 33,990-patient population and explore clinical distributions live.</p>
         </div>
 
-        <div class="tabs" style="margin-bottom: 20px;">
-          <div class="tab active" onclick="showExplorerTab('population', this)">Population Filtering</div>
-          <div class="tab" onclick="showExplorerTab('predictive', this)">Predictive Insights</div>
-        </div>
+        <div style="display:flex;gap:20px;align-items:flex-start">
 
-        <!-- Explorer Tab: Population Filtering -->
-        <div id="exp-tab-population" class="tab-content" style="display:block;">
-          <div style="display:flex; gap:16px; margin-bottom:24px; flex-wrap: wrap;">
-            <select id="flt-gender" class="btn btn-outline" style="background:var(--bg2);">
-              <option value="">All Genders</option>
-              <option value="M">Male</option>
-              <option value="F">Female</option>
-            </select>
+          <!-- ── Filter Panel ───────────────────────────────────── -->
+          <div style="width:252px;flex-shrink:0">
+            <div class="panel" style="padding:20px">
+              <div style="font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;
+                          color:var(--text3);font-weight:600;margin-bottom:16px">
+                Filter Population
+              </div>
 
-            <input type="number" id="flt-min-age" class="btn btn-outline" placeholder="Min Age" style="background:var(--bg2); width:100px;">
-            <input type="number" id="flt-max-age" class="btn btn-outline" placeholder="Max Age" style="background:var(--bg2); width:100px;">
-            <button class="btn btn-primary" onclick="loadExplorerData()">Apply Filters & Explore</button>
-          </div>
-          
-          <div id="exp-pop-content">
-            <div class="empty" style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:60px;">Apply filters to explore the data across multiple scales.</div>
-          </div>
-        </div>
+              <!-- Cohort -->
+              <div style="margin-bottom:14px">
+                <label style="font-size:.76rem;color:var(--text3);display:block;margin-bottom:5px">Cohort</label>
+                <select id="flt-cohort" style="width:100%;background:var(--bg3);border:1px solid var(--border2);
+                  border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:.84rem;outline:none">
+                  <option value="">All Cohorts</option>
+                  <option value="chronic">Chronic (HTN / T2D)</option>
+                  <option value="at_risk">At Risk</option>
+                  <option value="pediatric">Pediatric</option>
+                  <option value="deceased">Deceased</option>
+                </select>
+              </div>
 
-        <!-- Explorer Tab: Predictive Insights -->
-        <div id="exp-tab-predictive" class="tab-content" style="display:none;">
-          <div class="panel" style="background: rgba(96, 165, 250, 0.06); border-color: rgba(96, 165, 250, 0.3);">
-            <div class="panel-h" style="border-bottom:none;">
-               <div>
-                  <h3 style="color:var(--blue); font-size:1.1rem; margin-bottom:8px;">Predictive Modeling & Literature Context</h3>
-                  <p style="color:var(--text); line-height:1.6; margin-bottom:12px;">
-                    <strong>Model Choice & Justification:</strong> This application utilizes a clinical rules-engine as its predictive modeling technique. Compared to a baseline majority-class model (which naively outputs "Normal Risk" for everyone), our deterministic rule-based model demonstrates superior predictive performance in identifying critical cohorts. It integrates proven clinical literature variables—such as <strong>Age</strong>, <strong>Race/Ethnicity</strong>, and baseline <strong>HbA1c/Systolic BP</strong>—to immediately surface accurate risk factors, drastically outperforming baseline models without adopting the "black-box" opacity of machine learning.
-                  </p>
-                  <p style="color:var(--text); line-height:1.6;">
-                    <strong>Validating Data Sources:</strong> All analytics and trends strictly aggregate and forecast utilizing dynamic, current <strong>Synthea</strong> data populated in our SQLite database matching the specific locations and timeframes filtered, ensuring no dummy fallbacks are used.
-                  </p>
-               </div>
+              <!-- Gender -->
+              <div style="margin-bottom:14px">
+                <label style="font-size:.76rem;color:var(--text3);display:block;margin-bottom:5px">Gender</label>
+                <select id="flt-gender" style="width:100%;background:var(--bg3);border:1px solid var(--border2);
+                  border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:.84rem;outline:none">
+                  <option value="">All Genders</option>
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                </select>
+              </div>
+
+              <!-- Age Range -->
+              <div style="margin-bottom:14px">
+                <label style="font-size:.76rem;color:var(--text3);display:block;margin-bottom:5px">Age Range</label>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <input type="number" id="flt-age-min" placeholder="Min" min="0" max="120"
+                    style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;
+                           padding:8px 8px;color:var(--text);font-family:inherit;font-size:.84rem;outline:none">
+                  <span style="color:var(--text3);font-size:.8rem;flex-shrink:0">–</span>
+                  <input type="number" id="flt-age-max" placeholder="Max" min="0" max="120"
+                    style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;
+                           padding:8px 8px;color:var(--text);font-family:inherit;font-size:.84rem;outline:none">
+                </div>
+              </div>
+
+              <!-- Condition -->
+              <div style="margin-bottom:20px">
+                <label style="font-size:.76rem;color:var(--text3);display:block;margin-bottom:5px">Condition</label>
+                <select id="flt-condition" style="width:100%;background:var(--bg3);border:1px solid var(--border2);
+                  border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:.84rem;outline:none">
+                  <option value="">All Conditions</option>
+                  <option value="hypertension">Hypertension</option>
+                  <option value="diabetes">Diabetes (T2D)</option>
+                </select>
+              </div>
+
+              <button class="btn btn-primary" style="width:100%;margin-bottom:8px" onclick="applyExplorerFilters()">
+                Apply Filters
+              </button>
+              <button class="btn btn-outline" style="width:100%" onclick="resetExplorer()">
+                Reset
+              </button>
+            </div>
+
+            <!-- Active filter tags -->
+            <div id="exp-active-filters" style="margin-top:12px;display:none">
+              <div style="font-size:.72rem;color:var(--text3);margin-bottom:6px">Active filters</div>
+              <div id="exp-filter-tags" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+            </div>
+
+            <!-- Predictive context (kept from original) -->
+            <div class="panel" style="margin-top:14px;padding:16px;background:rgba(96,165,250,.05);border-color:rgba(96,165,250,.25)">
+              <div style="font-size:.72rem;color:var(--blue);font-weight:600;margin-bottom:8px;letter-spacing:.05em;text-transform:uppercase">Model Note</div>
+              <p style="font-size:.78rem;color:var(--text2);line-height:1.55">
+                Risk tiers use a clinical rules-engine integrating HbA1c, SBP, age, and condition status — outperforming a naive majority-class baseline without black-box opacity.
+              </p>
+              <p style="font-size:.75rem;color:var(--text3);margin-top:8px;line-height:1.5">
+                All distributions reflect live Synthea data from the SQLite database.
+              </p>
             </div>
           </div>
-          <div id="exp-pred-content">
-            <div class="empty" style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:60px;">Apply filters in the Population Filtering tab to see predictive breakdowns here.</div>
+
+          <!-- ── Results Panel ──────────────────────────────────── -->
+          <div style="flex:1;min-width:0">
+            <div id="exp-results">
+              <div style="padding:80px;text-align:center">
+                <div style="font-size:2rem;margin-bottom:12px;color:var(--border2)">⟳</div>
+                <div style="color:var(--text3);font-size:.9rem">
+                  Choose filters and click <strong style="color:var(--text)">Apply Filters</strong> to explore the population.
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+
+        </div><!-- /flex row -->
       </div>
     </div><!-- /content -->
   </main>
@@ -2285,42 +2340,205 @@
     }
 
     // ─── Analytics Explorer ───
-    let _explorerCharts = [];
-    
-    function showExplorerTab(id, el) {
-      document.getElementById('exp-tab-population').style.display = 'none';
-      document.getElementById('exp-tab-predictive').style.display = 'none';
-      document.querySelectorAll('#sec-explorer .tab').forEach(t => t.classList.remove('active'));
-      
-      document.getElementById('exp-tab-' + id).style.display = 'block';
-      el.classList.add('active');
+    let _expCharts = [];
+
+    function applyExplorerFilters() {
+      const cohort    = document.getElementById('flt-cohort')?.value    || '';
+      const gender    = document.getElementById('flt-gender')?.value    || '';
+      const ageMin    = document.getElementById('flt-age-min')?.value   || '';
+      const ageMax    = document.getElementById('flt-age-max')?.value   || '';
+      const condition = document.getElementById('flt-condition')?.value || '';
+
+      const filters = { cohort, gender, age_min: ageMin, age_max: ageMax, condition };
+      _updateFilterTags(filters);
+
+      const params = new URLSearchParams();
+      if (cohort)    params.set('cohort',    cohort);
+      if (gender)    params.set('gender',    gender);
+      if (ageMin)    params.set('age_min',   ageMin);
+      if (ageMax)    params.set('age_max',   ageMax);
+      if (condition) params.set('condition', condition);
+
+      const resultsEl = document.getElementById('exp-results');
+      resultsEl.innerHTML = `
+        <div style="padding:80px;text-align:center">
+          <div class="spinner" style="width:36px;height:36px;border-width:3px;margin:0 auto 16px"></div>
+          <div style="color:var(--text3);font-size:.9rem">Querying population…</div>
+        </div>`;
+
+      // Destroy old charts
+      _expCharts.forEach(c => c.destroy());
+      _expCharts = [];
+
+      fetch('/api/patients/analytics/?' + params.toString())
+        .then(r => r.json())
+        .then(data => _renderExplorerResults(data))
+        .catch(err => {
+          resultsEl.innerHTML = `
+            <div style="padding:60px;text-align:center">
+              <div style="color:var(--red);font-size:.9rem">Failed to load results: ${err.message}</div>
+              <button class="btn btn-outline" style="margin-top:16px" onclick="applyExplorerFilters()">Retry</button>
+            </div>`;
+        });
     }
 
-    function loadExplorerData() {
-      const ph = `<div class="empty" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:60px;text-align:center;">
-        <div style="font-size:1.4rem;margin-bottom:12px;">🚧</div>
-        <div style="font-weight:600;color:var(--text);margin-bottom:6px;">Coming in Phase 2</div>
-        <div style="color:var(--text3);font-size:.85rem;">Population filtering & predictive insights will be available in the next release.</div>
-      </div>`;
-      const popEl  = document.getElementById('exp-pop-content');
-      const predEl = document.getElementById('exp-pred-content');
-      if (popEl)  popEl.innerHTML  = ph;
-      if (predEl) predEl.innerHTML = ph;
-    }
-
-
-    function clearExplorerFilter(field) {
-      const input = document.getElementById(`flt-${field}`);
-      if (input) input.value = '';
-      loadExplorerData();
-    }
-
-    function resetExplorerFilters() {
-      ['gender', 'race', 'min-age', 'max-age'].forEach(field => {
-        const input = document.getElementById(`flt-${field}`);
-        if (input) input.value = '';
+    function resetExplorer() {
+      ['flt-cohort','flt-gender','flt-age-min','flt-age-max','flt-condition'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
       });
-      loadExplorerData();
+      document.getElementById('exp-active-filters').style.display = 'none';
+      document.getElementById('exp-filter-tags').innerHTML = '';
+      _expCharts.forEach(c => c.destroy());
+      _expCharts = [];
+      document.getElementById('exp-results').innerHTML = `
+        <div style="padding:80px;text-align:center">
+          <div style="font-size:2rem;margin-bottom:12px;color:var(--border2)">⟳</div>
+          <div style="color:var(--text3);font-size:.9rem">
+            Choose filters and click <strong style="color:var(--text)">Apply Filters</strong> to explore the population.
+          </div>
+        </div>`;
+    }
+
+    function _updateFilterTags(filters) {
+      const labels = {
+        cohort:    { chronic:'Chronic', at_risk:'At Risk', pediatric:'Pediatric', deceased:'Deceased' },
+        gender:    { M:'Male', F:'Female' },
+        condition: { hypertension:'Hypertension', diabetes:'Diabetes (T2D)' },
+      };
+      const tags = [];
+      if (filters.cohort)    tags.push({ label: labels.cohort[filters.cohort]    || filters.cohort,    field:'cohort' });
+      if (filters.gender)    tags.push({ label: labels.gender[filters.gender]    || filters.gender,    field:'gender' });
+      if (filters.age_min)   tags.push({ label: `Age ≥ ${filters.age_min}`,                           field:'age-min' });
+      if (filters.age_max)   tags.push({ label: `Age ≤ ${filters.age_max}`,                           field:'age-max' });
+      if (filters.condition) tags.push({ label: labels.condition[filters.condition] || filters.condition, field:'condition' });
+
+      const tagsEl  = document.getElementById('exp-filter-tags');
+      const wrapEl  = document.getElementById('exp-active-filters');
+      if (!tags.length) {
+        wrapEl.style.display = 'none';
+        tagsEl.innerHTML = '';
+        return;
+      }
+      wrapEl.style.display = 'block';
+      tagsEl.innerHTML = tags.map(t => `
+        <span style="display:inline-flex;align-items:center;gap:5px;background:var(--bg3);
+                     border:1px solid var(--border2);border-radius:20px;padding:3px 10px;font-size:.75rem;color:var(--text2)">
+          ${t.label}
+          <button onclick="_clearTag('${t.field}')" style="background:none;border:none;cursor:pointer;
+                  color:var(--text3);font-size:.85rem;line-height:1;padding:0">&times;</button>
+        </span>`).join('');
+    }
+
+    function _clearTag(field) {
+      const el = document.getElementById(`flt-${field}`);
+      if (el) el.value = '';
+      applyExplorerFilters();
+    }
+
+    function _renderExplorerResults(data) {
+      const count = (data.count || 0).toLocaleString();
+
+      const hba1c = data.hba1c_dist || {};
+      const bp    = data.bp_dist    || {};
+      const age   = data.age_dist   || {};
+      const conds = data.top_conditions || [];
+
+      document.getElementById('exp-results').innerHTML = `
+        <!-- Count badge -->
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+          <div style="font-size:2rem;font-weight:700;color:var(--accent)">${count}</div>
+          <div style="color:var(--text2);font-size:.9rem">patients match your filters</div>
+        </div>
+
+        <!-- Charts row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px">
+
+          <!-- HbA1c -->
+          <div class="panel" style="padding:18px">
+            <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);
+                        font-weight:600;margin-bottom:14px">HbA1c Distribution</div>
+            <canvas id="exp-hba1c-chart" height="180"></canvas>
+          </div>
+
+          <!-- Blood Pressure -->
+          <div class="panel" style="padding:18px">
+            <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);
+                        font-weight:600;margin-bottom:14px">Blood Pressure</div>
+            <canvas id="exp-bp-chart" height="180"></canvas>
+          </div>
+
+          <!-- Age Distribution -->
+          <div class="panel" style="padding:18px">
+            <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);
+                        font-weight:600;margin-bottom:14px">Age Distribution</div>
+            <canvas id="exp-age-chart" height="180"></canvas>
+          </div>
+
+        </div>
+
+        <!-- Top Conditions -->
+        <div class="panel" style="padding:18px">
+          <div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);
+                      font-weight:600;margin-bottom:14px">Top Conditions</div>
+          ${conds.length ? `
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">
+              ${conds.map((c, i) => `
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;
+                            background:var(--bg3);border-radius:8px">
+                  <span style="font-size:.72rem;color:var(--text3);width:18px;text-align:right">${i+1}</span>
+                  <span style="flex:1;font-size:.82rem;color:var(--text2);overflow:hidden;text-overflow:ellipsis;
+                               white-space:nowrap" title="${c.name}">${c.name}</span>
+                  <span style="font-size:.82rem;font-weight:600;color:var(--text);white-space:nowrap">
+                    ${(c.count||0).toLocaleString()}
+                  </span>
+                </div>`).join('')}
+            </div>` : `<div style="color:var(--text3);font-size:.85rem">No condition data available.</div>`}
+        </div>`;
+
+      // ── Chart.js instances ──────────────────────────────────────
+      const chartDefaults = {
+        type: 'bar',
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#8fa8bf', font: { size: 11 } }, grid: { color: '#2a3f55' } },
+            y: { ticks: { color: '#8fa8bf', font: { size: 11 } }, grid: { color: '#2a3f55' } },
+          },
+        },
+      };
+
+      // HbA1c
+      _expCharts.push(new Chart(document.getElementById('exp-hba1c-chart'), {
+        ...chartDefaults,
+        data: {
+          labels: ['Normal\n(<5.7%)', 'Prediabetes\n(5.7–6.4%)', 'Diabetes\n(≥6.5%)'],
+          datasets: [{ data: [hba1c.normal||0, hba1c.prediabetes||0, hba1c.diabetes||0],
+            backgroundColor: ['#4ade80','#fbbf24','#f87171'], borderRadius: 6 }],
+        },
+      }));
+
+      // BP
+      _expCharts.push(new Chart(document.getElementById('exp-bp-chart'), {
+        ...chartDefaults,
+        data: {
+          labels: ['Normal', 'Elevated', 'Stage 1', 'Stage 2'],
+          datasets: [{ data: [bp.normal||0, bp.elevated||0, bp.stage1||0, bp.stage2||0],
+            backgroundColor: ['#4ade80','#fbbf24','#fb923c','#f87171'], borderRadius: 6 }],
+        },
+      }));
+
+      // Age
+      const ageLabels = Object.keys(age).sort();
+      _expCharts.push(new Chart(document.getElementById('exp-age-chart'), {
+        ...chartDefaults,
+        data: {
+          labels: ageLabels,
+          datasets: [{ data: ageLabels.map(k => age[k]),
+            backgroundColor: '#60a5fa', borderRadius: 4 }],
+        },
+      }));
     }
 
     function renderExplorerTierPanel(riskTiers) {
