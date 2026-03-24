@@ -1,0 +1,67 @@
+[
+  {
+    "id": "dm_diet_1",
+    "condition": "diabetes",
+    "text": "For patients with Type 2 diabetes, a low-glycemic diet is strongly recommended. Focus on non-starchy vegetables, whole grains, lean proteins, and healthy fats. Limit refined carbohydrates, sugary beverages, and processed foods. Aim for consistent meal timing to stabilize blood glucose levels."
+  },
+  {
+    "id": "dm_exercise_1",
+    "condition": "diabetes",
+    "text": "Regular physical activity is a cornerstone of diabetes management. The ADA recommends at least 150 minutes per week of moderate-intensity aerobic exercise, such as brisk walking, swimming, or cycling. Resistance training 2-3 times per week improves insulin sensitivity. Avoid prolonged sitting \u2014 break up sedentary time every 30 minutes."
+  },
+  {
+    "id": "dm_monitoring_1",
+    "condition": "diabetes",
+    "text": "Self-monitoring of blood glucose (SMBG) helps patients understand how food, activity, and stress affect their glucose levels. HbA1c should be checked at least twice a year for stable patients, and quarterly for those with poor control or recent therapy changes. Target HbA1c is below 7% for most non-pregnant adults with diabetes."
+  },
+  {
+    "id": "dm_sleep_1",
+    "condition": "diabetes",
+    "text": "Poor sleep quality and sleep deprivation are linked to insulin resistance and higher HbA1c levels. Diabetic patients should aim for 7-9 hours of quality sleep per night. Screen for sleep apnea, which is more common in people with obesity and Type 2 diabetes."
+  },
+  {
+    "id": "dm_stress_1",
+    "condition": "diabetes",
+    "text": "Chronic stress elevates cortisol, which raises blood glucose levels. Stress management techniques such as mindfulness, deep breathing, yoga, and cognitive behavioral therapy can help improve glycemic control. Social support from family and peer groups also positively impacts diabetes outcomes."
+  },
+  {
+    "id": "htn_diet_1",
+    "condition": "hypertension",
+    "text": "The DASH (Dietary Approaches to Stop Hypertension) diet is the gold standard for blood pressure management. It emphasizes fruits, vegetables, whole grains, low-fat dairy, and limits sodium to under 1,500\u20132,300 mg/day. Reducing processed food intake and reading nutrition labels for sodium content are practical first steps."
+  },
+  {
+    "id": "htn_exercise_1",
+    "condition": "hypertension",
+    "text": "Aerobic exercise reduces systolic blood pressure by an average of 5\u20138 mmHg. Patients with hypertension should aim for 30 minutes of moderate aerobic activity most days of the week. Isometric resistance exercises (e.g., wall sits, handgrip) have also shown significant BP-lowering effects in recent studies."
+  },
+  {
+    "id": "htn_alcohol_1",
+    "condition": "hypertension",
+    "text": "Alcohol consumption raises blood pressure and can interfere with antihypertensive medications. Patients should limit alcohol to no more than 1 drink per day for women and 2 per day for men. Eliminating alcohol entirely often produces measurable reductions in blood pressure within weeks."
+  },
+  {
+    "id": "htn_smoking_1",
+    "condition": "hypertension",
+    "text": "Smoking causes acute spikes in blood pressure and damages arterial walls, compounding cardiovascular risk. Smoking cessation is one of the most impactful lifestyle changes for hypertensive patients. Nicotine replacement therapy, varenicline, and behavioral counseling are all evidence-based cessation strategies."
+  },
+  {
+    "id": "htn_weight_1",
+    "condition": "hypertension",
+    "text": "Losing even 5\u201310% of body weight can significantly reduce blood pressure in overweight patients. A structured weight loss program combining dietary changes and increased physical activity is recommended. Even modest weight loss of 5 kg has been shown to lower systolic BP by 4\u20135 mmHg."
+  },
+  {
+    "id": "prev_hydration_1",
+    "condition": "preventive",
+    "text": "Adequate hydration supports cardiovascular function and helps the kidneys regulate blood pressure. Patients should aim for 6-8 glasses of water per day, adjusted for activity level and climate. Sugary drinks and excessive caffeine should be minimized."
+  },
+  {
+    "id": "prev_mental_1",
+    "condition": "preventive",
+    "text": "Mental health and physical health are deeply intertwined. Anxiety and depression are associated with worse outcomes in both diabetes and hypertension. Encourage patients to seek mental health support, maintain social connections, and engage in activities that bring meaning and reduce stress."
+  },
+  {
+    "id": "prev_checkup_1",
+    "condition": "preventive",
+    "text": "Preventive care visits allow early detection of risk factor progression. Annual wellness exams, lipid panels, kidney function tests (eGFR, urine albumin), and eye exams are important for patients at risk of metabolic disease. Staying current with vaccinations (flu, pneumococcal) also reduces hospitalization risk."
+  }
+]

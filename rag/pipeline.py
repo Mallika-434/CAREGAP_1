@@ -1,0 +1,371 @@
+"""
+RAG Pipeline — Habit & Lifestyle Suggestions
+─────────────────────────────────────────────
+Architecture:
+  1. A curated knowledge base of clinical lifestyle guidelines
+     (diabetes, hypertension, diet, exercise) is embedded into
+     a FAISS vector store using sentence-transformers.
+  2. At query time, the patient's risk profile is used to form
+     a retrieval query.
+  3. Relevant chunks are retrieved and injected as context into
+     a prompt sent to Ollama (LLaMA3 or any local model).
+  4. Ollama returns personalized habit suggestions.
+
+Setup:
+  python manage.py build_rag_index   ← run once to build FAISS index
+"""
+
+import os
+import json
+import requests
+import logging
+from pathlib import Path
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+# ── Try to import vector store deps (optional at import time) ──────
+try:
+    import numpy as np
+    import faiss
+    from sentence_transformers import SentenceTransformer
+    FAISS_AVAILABLE = True
+except ImportError:
+    FAISS_AVAILABLE = False
+    logger.warning(
+        "faiss-cpu or sentence-transformers not installed. "
+        "Install with: pip install faiss-cpu sentence-transformers"
+    )
+
+
+# ── Knowledge Base ─────────────────────────────────────────────────
+# These chunks are embedded into the FAISS index.
+# Expand with real clinical guidelines (ADA, ACC/AHA, etc.)
+KNOWLEDGE_BASE = [
+    # Diabetes management
+    {
+        "id": "dm_diet_1",
+        "condition": "diabetes",
+        "text": (
+            "For patients with Type 2 diabetes, a low-glycemic diet is strongly recommended. "
+            "Focus on non-starchy vegetables, whole grains, lean proteins, and healthy fats. "
+            "Limit refined carbohydrates, sugary beverages, and processed foods. "
+            "Aim for consistent meal timing to stabilize blood glucose levels."
+        )
+    },
+    {
+        "id": "dm_exercise_1",
+        "condition": "diabetes",
+        "text": (
+            "Regular physical activity is a cornerstone of diabetes management. "
+            "The ADA recommends at least 150 minutes per week of moderate-intensity aerobic exercise, "
+            "such as brisk walking, swimming, or cycling. Resistance training 2-3 times per week "
+            "improves insulin sensitivity. Avoid prolonged sitting — break up sedentary time every 30 minutes."
+        )
+    },
+    {
+        "id": "dm_monitoring_1",
+        "condition": "diabetes",
+        "text": (
+            "Self-monitoring of blood glucose (SMBG) helps patients understand how food, activity, "
+            "and stress affect their glucose levels. HbA1c should be checked at least twice a year "
+            "for stable patients, and quarterly for those with poor control or recent therapy changes. "
+            "Target HbA1c is below 7% for most non-pregnant adults with diabetes."
+        )
+    },
+    {
+        "id": "dm_sleep_1",
+        "condition": "diabetes",
+        "text": (
+            "Poor sleep quality and sleep deprivation are linked to insulin resistance and higher HbA1c levels. "
+            "Diabetic patients should aim for 7-9 hours of quality sleep per night. "
+            "Screen for sleep apnea, which is more common in people with obesity and Type 2 diabetes."
+        )
+    },
+    {
+        "id": "dm_stress_1",
+        "condition": "diabetes",
+        "text": (
+            "Chronic stress elevates cortisol, which raises blood glucose levels. "
+            "Stress management techniques such as mindfulness, deep breathing, yoga, and cognitive "
+            "behavioral therapy can help improve glycemic control. Social support from family and "
+            "peer groups also positively impacts diabetes outcomes."
+        )
+    },
+    # Hypertension management
+    {
+        "id": "htn_diet_1",
+        "condition": "hypertension",
+        "text": (
+            "The DASH (Dietary Approaches to Stop Hypertension) diet is the gold standard for "
+            "blood pressure management. It emphasizes fruits, vegetables, whole grains, low-fat dairy, "
+            "and limits sodium to under 1,500–2,300 mg/day. Reducing processed food intake and "
+            "reading nutrition labels for sodium content are practical first steps."
+        )
+    },
+    {
+        "id": "htn_exercise_1",
+        "condition": "hypertension",
+        "text": (
+            "Aerobic exercise reduces systolic blood pressure by an average of 5–8 mmHg. "
+            "Patients with hypertension should aim for 30 minutes of moderate aerobic activity "
+            "most days of the week. Isometric resistance exercises (e.g., wall sits, handgrip) "
+            "have also shown significant BP-lowering effects in recent studies."
+        )
+    },
+    {
+        "id": "htn_alcohol_1",
+        "condition": "hypertension",
+        "text": (
+            "Alcohol consumption raises blood pressure and can interfere with antihypertensive medications. "
+            "Patients should limit alcohol to no more than 1 drink per day for women and 2 per day for men. "
+            "Eliminating alcohol entirely often produces measurable reductions in blood pressure within weeks."
+        )
+    },
+    {
+        "id": "htn_smoking_1",
+        "condition": "hypertension",
+        "text": (
+            "Smoking causes acute spikes in blood pressure and damages arterial walls, compounding "
+            "cardiovascular risk. Smoking cessation is one of the most impactful lifestyle changes "
+            "for hypertensive patients. Nicotine replacement therapy, varenicline, and behavioral "
+            "counseling are all evidence-based cessation strategies."
+        )
+    },
+    {
+        "id": "htn_weight_1",
+        "condition": "hypertension",
+        "text": (
+            "Losing even 5–10% of body weight can significantly reduce blood pressure in overweight patients. "
+            "A structured weight loss program combining dietary changes and increased physical activity "
+            "is recommended. Even modest weight loss of 5 kg has been shown to lower systolic BP by 4–5 mmHg."
+        )
+    },
+    # General preventive
+    {
+        "id": "prev_hydration_1",
+        "condition": "preventive",
+        "text": (
+            "Adequate hydration supports cardiovascular function and helps the kidneys regulate blood pressure. "
+            "Patients should aim for 6-8 glasses of water per day, adjusted for activity level and climate. "
+            "Sugary drinks and excessive caffeine should be minimized."
+        )
+    },
+    {
+        "id": "prev_mental_1",
+        "condition": "preventive",
+        "text": (
+            "Mental health and physical health are deeply intertwined. Anxiety and depression are "
+            "associated with worse outcomes in both diabetes and hypertension. Encourage patients "
+            "to seek mental health support, maintain social connections, and engage in activities "
+            "that bring meaning and reduce stress."
+        )
+    },
+    {
+        "id": "prev_checkup_1",
+        "condition": "preventive",
+        "text": (
+            "Preventive care visits allow early detection of risk factor progression. "
+            "Annual wellness exams, lipid panels, kidney function tests (eGFR, urine albumin), "
+            "and eye exams are important for patients at risk of metabolic disease. "
+            "Staying current with vaccinations (flu, pneumococcal) also reduces hospitalization risk."
+        )
+    },
+]
+
+
+class RAGPipeline:
+    """
+    Manages embedding, retrieval, and LLM generation for
+    personalized habit suggestions.
+    """
+
+    def __init__(self):
+        self.index       = None
+        self.chunks      = []
+        self.model       = None
+        self.index_path  = Path(settings.FAISS_INDEX_PATH)
+        self._loaded     = False
+
+    def _load_model(self):
+        if self.model is None:
+            if not FAISS_AVAILABLE:
+                raise RuntimeError(
+                    "sentence-transformers and faiss-cpu are required. "
+                    "Install: pip install sentence-transformers faiss-cpu"
+                )
+            self.model = SentenceTransformer('all-MiniLM-L6-v2')
+
+    def build_index(self):
+        """Build FAISS index from KNOWLEDGE_BASE. Run once via management command."""
+        self._load_model()
+        texts = [chunk['text'] for chunk in KNOWLEDGE_BASE]
+        embeddings = self.model.encode(texts, show_progress_bar=True)
+        embeddings = np.array(embeddings).astype('float32')
+        faiss.normalize_L2(embeddings)
+
+        dim   = embeddings.shape[1]
+        index = faiss.IndexFlatIP(dim)  # inner product = cosine on normalized vecs
+        index.add(embeddings)
+
+        # Save
+        self.index_path.mkdir(parents=True, exist_ok=True)
+        faiss.write_index(index, str(self.index_path / 'knowledge.index'))
+        with open(self.index_path / 'chunks.json', 'w') as f:
+            json.dump(KNOWLEDGE_BASE, f, indent=2)
+
+        self.index  = index
+        self.chunks = KNOWLEDGE_BASE
+        self._loaded = True
+        logger.info(f"FAISS index built with {len(KNOWLEDGE_BASE)} chunks.")
+
+    def _ensure_loaded(self):
+        if self._loaded:
+            return
+        index_file = self.index_path / 'knowledge.index'
+        chunks_file = self.index_path / 'chunks.json'
+
+        if index_file.exists() and chunks_file.exists():
+            self._load_model()
+            self.index  = faiss.read_index(str(index_file))
+            with open(chunks_file) as f:
+                self.chunks = json.load(f)
+            self._loaded = True
+        else:
+            raise RuntimeError(
+                "RAG index not built. Run: python manage.py build_rag_index"
+            )
+
+    def retrieve(self, query: str, top_k: int = 4) -> list[dict]:
+        """Embed query and retrieve top-k most relevant chunks."""
+        self._ensure_loaded()
+        q_embed = self.model.encode([query]).astype('float32')
+        faiss.normalize_L2(q_embed)
+        scores, indices = self.index.search(q_embed, top_k)
+        results = []
+        for score, idx in zip(scores[0], indices[0]):
+            if idx >= 0:
+                chunk = dict(self.chunks[idx])
+                chunk['score'] = float(score)
+                results.append(chunk)
+        return results
+
+    def generate_suggestions(self, patient_profile: dict) -> dict:
+        """
+        Full RAG pipeline:
+          1. Build retrieval query from patient profile
+          2. Retrieve relevant knowledge chunks
+          3. Construct prompt with context
+          4. Call Ollama → get personalized suggestions
+        """
+        # Step 1: Build retrieval query
+        conditions = []
+        if patient_profile.get('has_diabetes'):
+            conditions.append('diabetes')
+        if patient_profile.get('has_hypertension'):
+            conditions.append('hypertension')
+        if not conditions:
+            conditions.append('preventive')
+
+        query = (
+            f"Lifestyle and habit recommendations for a patient with "
+            f"{', '.join(conditions)}. "
+            f"Age: {patient_profile.get('age', 'unknown')}. "
+            f"HbA1c: {patient_profile.get('hba1c_value') or 'N/A'}%. "
+            f"Systolic BP: {patient_profile.get('latest_sbp') or 'N/A'} mmHg."
+        )
+
+        # Step 2: Retrieve context
+        try:
+            chunks = self.retrieve(query, top_k=4)
+            context = "\n\n".join([c['text'] for c in chunks])
+        except RuntimeError as e:
+            # Index not built yet — use raw knowledge base as fallback
+            context = "\n\n".join([c['text'] for c in KNOWLEDGE_BASE[:4]])
+            chunks  = []
+
+        # Step 3: Build prompt
+        prompt = _build_prompt(patient_profile, context)
+
+        # Step 4: Call Ollama
+        try:
+            suggestions_text = _call_ollama(prompt)
+        except Exception as e:
+            suggestions_text = (
+                f"Could not reach Ollama at {settings.OLLAMA_BASE_URL}. "
+                f"Make sure Ollama is running and the model '{settings.OLLAMA_MODEL}' is pulled.\n"
+                f"Error: {str(e)}"
+            )
+
+        return {
+            'query':       query,
+            'context_used': [c.get('id') for c in chunks],
+            'suggestions': suggestions_text,
+            'model':       settings.OLLAMA_MODEL,
+        }
+
+
+def _build_prompt(profile: dict, context: str) -> str:
+    """Construct the RAG prompt injected into Ollama."""
+    name       = profile.get('name', 'the patient')
+    age        = profile.get('age', 'unknown')
+    gender     = profile.get('gender', 'unknown')
+    conditions = []
+    if profile.get('has_diabetes'):
+        conditions.append('Type 2 Diabetes')
+    if profile.get('has_hypertension'):
+        conditions.append('Hypertension')
+    hba1c = profile.get('hba1c_value')
+    sbp   = profile.get('latest_sbp')
+
+    condition_str = ', '.join(conditions) if conditions else 'No confirmed chronic conditions'
+
+    return f"""You are a nurse case management assistant providing personalized, evidence-based \
+lifestyle and habit recommendations to support patient health.
+
+PATIENT PROFILE
+───────────────
+Name:       {name}
+Age:        {age}
+Gender:     {gender}
+Conditions: {condition_str}
+HbA1c:      {f"{hba1c}%" if hba1c else "Not recently tested"}
+Systolic BP:{f"{sbp} mmHg" if sbp else "Not recently recorded"}
+
+CLINICAL GUIDELINES CONTEXT (retrieved)
+────────────────────────────────────────
+{context}
+
+TASK
+────
+Based on the patient profile and the clinical context above, provide 4-6 specific, \
+actionable, and personalized lifestyle habit recommendations for this patient. \
+Format each recommendation with:
+  • A short title (bold)
+  • 2-3 sentences of practical guidance tailored to this patient's specific values
+
+Be warm, encouraging, and avoid medical jargon. Do not recommend medications or diagnoses. \
+Focus on diet, exercise, sleep, stress management, and monitoring habits.
+"""
+
+
+def _call_ollama(prompt: str) -> str:
+    """Send prompt to Ollama REST API and return the generated text."""
+    url  = f"{settings.OLLAMA_BASE_URL}/api/generate"
+    payload = {
+        "model":  settings.OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "num_predict": 600,
+        }
+    }
+    response = requests.post(url, json=payload, timeout=120)
+    response.raise_for_status()
+    return response.json().get('response', '').strip()
+
+
+# Singleton instance
+rag_pipeline = RAGPipeline()

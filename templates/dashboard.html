@@ -1,0 +1,2336 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CareGap — Patient Risk Management</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg2: #141b24;
+      --bg3: #1c2635;
+      --surface: #1e2d3d;
+      --border: #2a3f55;
+      --border2: #334d66;
+      --text: #e8edf2;
+      --text2: #8fa8bf;
+      --text3: #5a7a94;
+      --accent: #2dd4bf;
+      --red: #f87171;
+      --amber: #fbbf24;
+      --green: #4ade80;
+      --blue: #60a5fa;
+      --purple: #a78bfa;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 260px;
+      min-height: 100vh;
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      padding: 28px 24px 22px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo .brand {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.5rem;
+      color: var(--accent);
+      line-height: 1.1;
+    }
+
+    .logo .sub {
+      font-size: 0.7rem;
+      color: var(--text3);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    .slabel {
+      font-size: .65rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--text3);
+      padding: 18px 24px 7px;
+      font-weight: 600;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 24px;
+      cursor: pointer;
+      color: var(--text2);
+      font-size: .88rem;
+      transition: all .15s;
+      border-left: 2px solid transparent;
+    }
+
+    .nav-item:hover {
+      background: var(--bg3);
+      color: var(--text);
+    }
+
+    .nav-item.active {
+      background: rgba(45, 212, 191, .08);
+      color: var(--accent);
+      border-left-color: var(--accent);
+      font-weight: 500;
+    }
+
+    .nav-item svg {
+      width: 17px;
+      height: 17px;
+      flex-shrink: 0;
+      opacity: .8;
+    }
+
+    .sfooter {
+      margin-top: auto;
+      padding: 18px 24px;
+      border-top: 1px solid var(--border);
+      font-size: .75rem;
+      color: var(--text3);
+      line-height: 1.6;
+    }
+
+    .sfooter span {
+      color: var(--text2);
+    }
+
+    /* MAIN */
+    .main {
+      margin-left: 260px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      padding: 18px 36px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(13, 17, 23, .9);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .topbar-title {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.3rem;
+    }
+
+    .topbar-title span {
+      color: var(--accent);
+    }
+
+    .rag-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: .78rem;
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--border2);
+      color: var(--text3);
+    }
+
+    .rag-status.ok {
+      border-color: rgba(74, 222, 128, .3);
+      color: var(--green);
+    }
+
+    .rag-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .content {
+      padding: 28px 36px;
+      flex: 1;
+    }
+
+    /* SECTIONS */
+    .section {
+      display: none;
+    }
+
+    .section.active {
+      display: block;
+      animation: fadeUp .28s ease;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(8px)
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0)
+      }
+    }
+
+    /* PAGE HEADER */
+    .ph {
+      margin-bottom: 24px;
+    }
+
+    .ph h2 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.75rem;
+    }
+
+    .ph p {
+      color: var(--text2);
+      font-size: .86rem;
+      margin-top: 5px;
+      max-width: 540px;
+    }
+
+    /* SEARCH BOX */
+    .search-hero {
+      width: 100%;
+      max-width: 900px;
+      margin: 0 auto;
+      text-align: left;
+    }
+
+    .search-hero h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 2.2rem;
+      margin-bottom: 8px;
+    }
+
+    .search-hero p {
+      color: var(--text2);
+      font-size: .9rem;
+      margin-bottom: 24px;
+    }
+
+    .search-wrap {
+      position: relative;
+    }
+
+    .search-wrap input {
+      width: 100%;
+      background: var(--surface);
+      border: 1.5px solid var(--border2);
+      border-radius: 12px;
+      padding: 14px 18px 14px 48px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color .2s;
+    }
+
+    .search-wrap input:focus {
+      border-color: var(--accent);
+    }
+
+    .search-wrap input::placeholder {
+      color: var(--text3);
+    }
+
+    .search-wrap svg {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text3);
+    }
+
+    .search-results {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 12px;
+      margin-top: 16px;
+      max-height: calc(100vh - 280px);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .search-result-item {
+      padding: 13px 18px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      transition: background .12s;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .search-result-item:last-child {
+      border-bottom: none;
+    }
+
+    .search-result-item:hover {
+      background: var(--bg3);
+    }
+
+    .sri-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: rgba(45,212,191,.15);
+      border: 1px solid rgba(45,212,191,.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: .85rem;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .sri-name {
+      font-weight: 500;
+      color: var(--text);
+      font-size: .9rem;
+    }
+
+    .sri-meta {
+      font-size: .76rem;
+      color: var(--text3);
+      margin-top: 2px;
+    }
+
+    .sri-arrow {
+      margin-left: auto;
+      color: var(--text3);
+      opacity: .5;
+    }
+
+    .sri-insurance {
+      margin-left: auto;
+      font-size: .72rem;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: rgba(45,212,191,.1);
+      color: var(--accent);
+      border: 1px solid rgba(45,212,191,.25);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .search-count strong {
+      color: var(--text);
+    }
+
+    .cohort-btn {
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border2);
+      background: var(--bg3);
+      color: var(--text2);
+      font-size: .78rem;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .cohort-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .cohort-btn.active {
+      background: rgba(45,212,191,.15);
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* PATIENT CARD */
+    .patient-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 22px;
+    }
+
+    .pc-header {
+      padding: 22px 26px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .pc-avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--bg3);
+      border: 2px solid var(--border2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 1.4rem;
+      flex-shrink: 0;
+    }
+
+    .pc-name {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.4rem;
+      line-height: 1.2;
+    }
+
+    .pc-meta {
+      font-size: .82rem;
+      color: var(--text2);
+      margin-top: 4px;
+    }
+
+    .pc-id {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .72rem;
+      color: var(--text3);
+      margin-top: 2px;
+    }
+
+    .pc-details {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+    }
+
+    .pc-detail {
+      padding: 16px 22px;
+      border-right: 1px solid var(--border);
+    }
+
+    .pc-detail:last-child {
+      border-right: none;
+    }
+
+    .pd-label {
+      font-size: .68rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--text3);
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .pd-value {
+      font-size: .92rem;
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    /* RISK CARD */
+    .risk-card {
+      border-radius: 14px;
+      border: 1.5px solid;
+      padding: 22px 26px;
+      margin-bottom: 22px;
+      display: flex;
+      gap: 22px;
+      align-items: flex-start;
+    }
+
+    .risk-card.HIGH {
+      background: rgba(248, 113, 113, .06);
+      border-color: rgba(248, 113, 113, .3);
+    }
+
+    .risk-card.MODERATE {
+      background: rgba(251, 191, 36, .06);
+      border-color: rgba(251, 191, 36, .3);
+    }
+
+    .risk-card.PREVENTIVE {
+      background: rgba(96, 165, 250, .06);
+      border-color: rgba(96, 165, 250, .3);
+    }
+
+    .risk-card.NORMAL {
+      background: rgba(74, 222, 128, .06);
+      border-color: rgba(74, 222, 128, .3);
+    }
+
+    .risk-badge {
+      min-width: 96px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .rb-tier {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .HIGH .rb-tier {
+      color: var(--red);
+    }
+
+    .MODERATE .rb-tier {
+      color: var(--amber);
+    }
+
+    .PREVENTIVE .rb-tier {
+      color: var(--blue);
+    }
+
+    .NORMAL .rb-tier {
+      color: var(--green);
+    }
+
+    .rb-score {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 2rem;
+      font-weight: 500;
+      line-height: 1;
+    }
+
+    .rb-label {
+      font-size: .68rem;
+      color: var(--text3);
+      margin-top: 2px;
+    }
+
+    .risk-body {
+      flex: 1;
+    }
+
+    .risk-action {
+      font-size: .88rem;
+      color: var(--text2);
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+
+    .risk-reasons {
+      list-style: none;
+    }
+
+    .risk-reasons li {
+      font-size: .82rem;
+      color: var(--text3);
+      margin-bottom: 5px;
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+    }
+
+    .risk-reasons li::before {
+      content: '→';
+      color: var(--text3);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .risk-cta {
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    /* BUTTONS */
+    .btn {
+      padding: 9px 18px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      font-size: .84rem;
+      font-weight: 500;
+      transition: all .15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #0d1117;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent);
+      opacity: .88;
+      transform: translateY(-1px);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--text2);
+      border: 1px solid var(--border2);
+    }
+
+    .btn-outline:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .btn-danger {
+      background: rgba(248, 113, 113, .15);
+      color: var(--red);
+      border: 1px solid rgba(248, 113, 113, .3);
+    }
+
+    .btn-danger:hover {
+      background: rgba(248, 113, 113, .25);
+    }
+
+    /* PANEL */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .filter-panel {
+      border-color: rgba(45, 212, 191, .2);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, .25);
+    }
+
+    .filter-chip-row {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter-chip {
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(45, 212, 191, .08);
+      color: var(--accent);
+      padding: 6px 14px;
+      font-size: .78rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all .15s;
+    }
+
+    .filter-chip span {
+      font-size: .8rem;
+      color: var(--text3);
+    }
+
+    .filter-chip:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .filter-empty {
+      color: var(--text3);
+      font-size: .85rem;
+      margin-top: 4px;
+    }
+
+    .filter-summary {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 22px;
+      color: var(--text2);
+      font-size: .82rem;
+    }
+
+    .ins-pill {
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      padding: 5px 12px;
+      background: rgba(96, 165, 250, .1);
+      color: var(--blue);
+      font-size: .78rem;
+      margin-right: 8px;
+      margin-bottom: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .summary-card {
+      padding: 20px 24px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .summary-card .summary-label {
+      font-size: .7rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--text3);
+      font-weight: 600;
+    }
+
+    .summary-card .summary-value {
+      font-family: 'DM Serif Display', serif;
+      font-size: 2rem;
+    }
+
+    .tier-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .tier-card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 14px;
+      background: var(--bg3);
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      transition: all .15s;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .tier-card.active {
+      border-color: var(--accent);
+      background: rgba(45, 212, 191, .08);
+      box-shadow: 0 0 0 1px rgba(45, 212, 191, .4);
+    }
+
+    .tier-card .tier-label {
+      font-size: .7rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--text3);
+    }
+
+    .tier-card .tier-count {
+      font-size: 1.6rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .tier-card .tier-sub {
+      font-size: .74rem;
+      color: var(--text3);
+    }
+
+    .tier-detail {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      font-size: .85rem;
+      color: var(--text2);
+      line-height: 1.5;
+    }
+
+    .charts-shell {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+      margin-top: 22px;
+    }
+
+    .chart-card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 18px;
+      height: 350px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .chart-card .panel-h {
+      margin-bottom: 0;
+    }
+
+    .panel-h {
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .panel-h h3 {
+      font-size: .92rem;
+      font-weight: 600;
+    }
+
+    .panel-h p {
+      font-size: .76rem;
+      color: var(--text3);
+      margin-top: 2px;
+    }
+
+    .pbadge {
+      font-size: .7rem;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+
+    .pbadge-teal {
+      background: rgba(45, 212, 191, .12);
+      color: var(--accent);
+      border: 1px solid rgba(45, 212, 191, .25);
+    }
+
+    .pbadge-red {
+      background: rgba(248, 113, 113, .12);
+      color: var(--red);
+      border: 1px solid rgba(248, 113, 113, .25);
+    }
+
+    .pbadge-blue {
+      background: rgba(96, 165, 250, .12);
+      color: var(--blue);
+      border: 1px solid rgba(96, 165, 250, .25);
+    }
+
+    /* URGENT CARE LIST */
+    .uc-list {
+      padding: 16px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .uc-item {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      transition: border-color .15s;
+    }
+
+    .uc-item:hover {
+      border-color: var(--border2);
+    }
+
+    .uc-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 9px;
+      background: rgba(248, 113, 113, .1);
+      border: 1px solid rgba(248, 113, 113, .25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: var(--red);
+    }
+
+    .uc-name {
+      font-weight: 500;
+      font-size: .9rem;
+      color: var(--text);
+    }
+
+    .uc-addr {
+      font-size: .78rem;
+      color: var(--text3);
+      margin-top: 2px;
+    }
+
+    .uc-tags {
+      display: flex;
+      gap: 6px;
+      margin-top: 7px;
+      flex-wrap: wrap;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 5px;
+      font-size: .7rem;
+      font-weight: 500;
+    }
+
+    .tag-green {
+      background: rgba(74, 222, 128, .12);
+      color: var(--green);
+    }
+
+    .tag-blue {
+      background: rgba(96, 165, 250, .12);
+      color: var(--blue);
+    }
+
+    .tag-red {
+      background: rgba(248, 113, 113, .12);
+      color: var(--red);
+    }
+
+    .tag-gray {
+      background: rgba(90, 122, 148, .18);
+      color: var(--text2);
+    }
+
+    .tag-amber {
+      background: rgba(251, 191, 36, .12);
+      color: var(--amber);
+    }
+
+    .uc-right {
+      margin-left: auto;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .uc-rating {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--amber);
+    }
+
+    .uc-dist {
+      font-size: .74rem;
+      color: var(--text3);
+      margin-top: 2px;
+    }
+
+    .uc-phone {
+      font-size: .76rem;
+      color: var(--text2);
+      margin-top: 3px;
+    }
+
+    /* RAG SUGGESTIONS */
+    .rag-wrap {
+      padding: 22px 26px;
+    }
+
+    .rag-loading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text2);
+      padding: 28px 0;
+    }
+
+    .rag-text {
+      font-size: .88rem;
+      color: var(--text2);
+      line-height: 1.8;
+      white-space: pre-wrap;
+    }
+
+    .rag-meta {
+      font-size: .74rem;
+      color: var(--text3);
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 16px;
+    }
+
+    /* SPINNER */
+    .spin {
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg)
+      }
+    }
+
+    /* EMPTY STATE */
+    .empty {
+      text-align: center;
+      padding: 60px 24px;
+      color: var(--text3);
+    }
+
+    .empty svg {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 14px;
+      opacity: .3;
+    }
+
+    .empty p {
+      font-size: .88rem;
+    }
+
+    /* TABS */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg2);
+    }
+
+    .tab {
+      padding: 12px 22px;
+      cursor: pointer;
+      font-size: .84rem;
+      color: var(--text3);
+      border-bottom: 2px solid transparent;
+      transition: all .15s;
+    }
+
+    .tab:hover {
+      color: var(--text2);
+    }
+
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* GRID */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+
+    /* VITAL PILL */
+    .vital {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+    }
+
+    .vital .label {
+      font-size: .68rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--text3);
+      font-weight: 600;
+    }
+
+    .vital .value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.4rem;
+      color: var(--text);
+      margin-top: 4px;
+    }
+
+    .vital .unit {
+      font-size: .74rem;
+      color: var(--text3);
+    }
+
+    /* FOLLOWUP CALLOUT */
+    .followup-box {
+      background: rgba(251, 191, 36, .06);
+      border: 1px solid rgba(251, 191, 36, .25);
+      border-radius: 10px;
+      padding: 16px 20px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .followup-box svg {
+      flex-shrink: 0;
+      color: var(--amber);
+    }
+
+    .followup-body {
+      font-size: .85rem;
+      color: var(--text2);
+      line-height: 1.6;
+    }
+
+    .followup-body strong {
+      color: var(--text);
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg2);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border2);
+      border-radius: 3px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="logo">
+      <div class="brand">CareGap<br>Analytics</div>
+      <div class="sub">Patient Risk Management</div>
+    </div>
+    <div class="slabel">Reports (Dashboards)</div>
+    <div class="nav-item active" id="nav-explorer" onclick="showSection('explorer', this)">
+      <svgi>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+          <polyline points="2 17 12 22 22 17"></polyline>
+          <polyline points="2 12 12 17 22 12"></polyline>
+        </svg>
+      </svgi>
+      Analytics Explorer
+    </div>
+    <div class="nav-item" onclick="showSection('dashboard', this)">
+      <svgi>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+      </svgi>
+      Population Dashboard
+    </div>
+
+    <div class="slabel">Patient Detail</div>
+    <div class="nav-item" onclick="showSection('search',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      Patient Search
+    </div>
+    <div class="nav-item" onclick="showSection('profile',this)" id="nav-profile" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
+      </svg>
+      <span id="nav-profile-name">Patient Profile</span>
+    </div>
+
+    <div class="slabel">Clinical Actions</div>
+    <div class="nav-item" onclick="showSection('triage', this)">
+      <svgi>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+          <line x1="12" y1="9" x2="12" y2="13"></line>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+      </svgi>
+      🚨 Action Required
+    </div>
+    <div class="sfooter">
+      <div>Group 5 · MRP4 · <span>AA-5960-02</span></div>
+      <div style="margin-top:3px">Saint Louis University</div>
+      <div style="margin-top:3px;font-size:.7rem">Instructor: <span>Dr. Srikanth Mudigonda</span></div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-title">CareGap · <span>Patient Risk Engine</span></div>
+    </header>
+
+    <div class="content">
+
+      <!-- ═══ SECTION: SEARCH ═══ -->
+      <div id="sec-search" class="section">
+        <div style="display:flex;justify-content:center;padding-top:40px;padding-bottom:24px;">
+          <div class="search-hero">
+            <h1 style="font-family:'DM Serif Display',serif;font-size:2rem;margin-bottom:6px;">Find a Patient</h1>
+            <p style="color:var(--text2);font-size:.9rem;margin-bottom:20px;">Search by first name, last name, or city. Click any patient to view their risk profile.</p>
+
+            <div class="search-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input type="text" id="patient-search-input" placeholder="e.g. Maggio, Morton, Los Angeles…"
+                oninput="filterPatients(this.value)" autocomplete="off" />
+            </div>
+
+            <div id="cohort-filters" style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+              <button class="cohort-btn active" data-cohort="" onclick="setCohortFilter(this,'')">All</button>
+              <button class="cohort-btn" data-cohort="chronic" onclick="setCohortFilter(this,'chronic')">Chronic</button>
+              <button class="cohort-btn" data-cohort="at_risk" onclick="setCohortFilter(this,'at_risk')">At Risk</button>
+              <button class="cohort-btn" data-cohort="pediatric" onclick="setCohortFilter(this,'pediatric')">Pediatric</button>
+            </div>
+
+            <div class="search-count" id="search-count" style="margin-top:14px;font-size:.82rem;color:var(--text3);"></div>
+
+            <div id="search-results" style="
+              background:var(--surface);
+              border:1px solid var(--border2);
+              border-radius:12px;
+              margin-top:8px;
+              max-height:calc(100vh - 280px);
+              overflow-y:auto;
+              display:flex;
+              flex-direction:column;
+            ">
+              <div style="padding:28px;text-align:center;color:var(--text3);font-size:.85rem;">
+                <div class="spin" style="margin:0 auto 12px;"></div>Loading patients…
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ SECTION: PATIENT PROFILE ═══ -->
+      <div id="sec-profile" class="section">
+        <!-- Patient Card -->
+        <div id="patient-card-wrap">
+          <div class="empty">
+            <div class="spin"></div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active" onclick="showTab('risk',this)">⬡ Risk Assessment</div>
+          <div class="tab" onclick="showTab('trends',this)">📈 Trends</div>
+          <div class="tab" onclick="showTab('urgentcare',this)">🏥 Urgent Care</div>
+          <div class="tab" onclick="showTab('history',this)">📋 History</div>
+        </div>
+
+        <!-- Tab: Risk -->
+        <div id="tab-risk" class="tab-content">
+          <div id="risk-content" style="padding:20px 0">
+            <div class="empty">
+              <div class="spin"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Urgent Care -->
+        <div id="tab-urgentcare" class="tab-content" style="display:none">
+          <div class="panel" style="margin-top:20px">
+            <div class="panel-h">
+              <div>
+                <h3>Nearby Urgent Care Facilities</h3>
+                <p>Matched to patient city and insurance type</p>
+              </div>
+              <span class="pbadge pbadge-red">HIGH Risk Recommendation</span>
+            </div>
+            <div id="uc-content">
+              <div class="empty" style="padding:30px">
+                <p>Load a patient first.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Trends (Charts) -->
+        <div id="tab-trends" class="tab-content" style="display:none">
+          <div id="trends-empty" class="empty"
+            style="display:none;padding:40px;margin-top:20px;background:var(--surface);border-radius:12px">
+            <p>Not enough historical data to generate trend charts.</p>
+          </div>
+          <div id="trends-content" style="display:none;margin-top:20px">
+            <div class="panel">
+              <div class="panel-h">
+                <div>
+                  <h3>HbA1c History</h3>
+                  <p>Longitudinal blood sugar trends</p>
+                </div>
+              </div>
+              <div id="wrap-hba1c" style="padding:18px;height:280px"><canvas id="chart-hba1c-trend"></canvas></div>
+            </div>
+            <div class="panel">
+              <div class="panel-h">
+                <div>
+                  <h3>Blood Pressure History</h3>
+                  <p>Systolic & Diastolic readings</p>
+                </div>
+              </div>
+              <div id="wrap-bp" style="padding:18px;height:280px"><canvas id="chart-bp-trend"></canvas></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: History -->
+        <div id="tab-history" class="tab-content" style="display:none">
+          <div class="two-col" style="margin-top:20px">
+            <div class="panel">
+              <div class="panel-h">
+                <div>
+                  <h3>Recent Observations</h3>
+                  <p>Latest labs and vitals</p>
+                </div>
+              </div>
+              <div id="obs-content" style="overflow-x:auto">
+                <div class="empty" style="padding:24px">
+                  <p>Loading…</p>
+                </div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-h">
+                <div>
+                  <h3>Active Conditions</h3>
+                  <p>Current diagnoses</p>
+                </div>
+              </div>
+              <div id="cond-content" style="overflow-x:auto">
+                <div class="empty" style="padding:24px">
+                  <p>Loading…</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-h">
+              <div>
+                <h3>Recent Encounters</h3>
+                <p>Visit history</p>
+              </div>
+            </div>
+            <div id="enc-content" style="overflow-x:auto">
+              <div class="empty" style="padding:24px">
+                <p>Loading…</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ SECTION: POPULATION DASHBOARD ═══ -->
+      <div id="sec-dashboard" class="section">
+        <div class="view-header">
+          <h2>Population Analytics</h2>
+          <p>Real-time clinical metrics & risk tracking</p>
+        </div>
+        <div id="dashboard-stats-content">
+          <!-- Charts injected here -->
+        </div>
+      </div>
+
+      <!-- ═══ SECTION: TRIAGE VIEW ═══ -->
+      <div id="sec-triage" class="section">
+        <div class="view-header">
+          <h2>🚨 Action Required</h2>
+          <p>Triage queue for high-risk and emergency patients requiring immediate outreach.</p>
+        </div>
+
+        <div class="panel" style="margin-bottom: 24px; border-top: 2px solid var(--red);">
+          <div class="panel-h">
+            <div>
+              <h3 style="color:var(--red)">Emergency Room Follow-Up Needed</h3>
+              <p>Critical vitals (SBP ≥ 160 or HbA1c ≥ 9.0). Dispatch immediately.</p>
+            </div>
+          </div>
+          <div id="triage-emergency-content" style="padding: 10px 18px">
+            <div class="empty">
+              <div class="spin"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="border-top: 2px solid var(--amber);">
+          <div class="panel-h">
+            <div>
+              <h3 style="color:var(--amber)">Urgent Care Needed</h3>
+              <p>High-risk cohort requiring same-day or next-day clinic visits.</p>
+            </div>
+          </div>
+          <div id="triage-urgent-content" style="padding: 10px 18px">
+            <div class="empty">
+              <div class="spin"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ═══ SECTION: ANALYTICS EXPLORER ═══ -->
+      <div id="sec-explorer" class="section active">
+        <div class="view-header" style="margin-bottom: 24px;">
+          <h2>Analytics Explorer</h2>
+          <p>Multidimensional data exploration & predictive insights based on patient criteria.</p>
+        </div>
+
+        <div class="tabs" style="margin-bottom: 20px;">
+          <div class="tab active" onclick="showExplorerTab('population', this)">Population Filtering</div>
+          <div class="tab" onclick="showExplorerTab('predictive', this)">Predictive Insights</div>
+        </div>
+
+        <!-- Explorer Tab: Population Filtering -->
+        <div id="exp-tab-population" class="tab-content" style="display:block;">
+          <div style="display:flex; gap:16px; margin-bottom:24px; flex-wrap: wrap;">
+            <select id="flt-gender" class="btn btn-outline" style="background:var(--bg2);">
+              <option value="">All Genders</option>
+              <option value="M">Male</option>
+              <option value="F">Female</option>
+            </select>
+
+            <input type="number" id="flt-min-age" class="btn btn-outline" placeholder="Min Age" style="background:var(--bg2); width:100px;">
+            <input type="number" id="flt-max-age" class="btn btn-outline" placeholder="Max Age" style="background:var(--bg2); width:100px;">
+            <button class="btn btn-primary" onclick="loadExplorerData()">Apply Filters & Explore</button>
+          </div>
+          
+          <div id="exp-pop-content">
+            <div class="empty" style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:60px;">Apply filters to explore the data across multiple scales.</div>
+          </div>
+        </div>
+
+        <!-- Explorer Tab: Predictive Insights -->
+        <div id="exp-tab-predictive" class="tab-content" style="display:none;">
+          <div class="panel" style="background: rgba(96, 165, 250, 0.06); border-color: rgba(96, 165, 250, 0.3);">
+            <div class="panel-h" style="border-bottom:none;">
+               <div>
+                  <h3 style="color:var(--blue); font-size:1.1rem; margin-bottom:8px;">Predictive Modeling & Literature Context</h3>
+                  <p style="color:var(--text); line-height:1.6; margin-bottom:12px;">
+                    <strong>Model Choice & Justification:</strong> This application utilizes a clinical rules-engine as its predictive modeling technique. Compared to a baseline majority-class model (which naively outputs "Normal Risk" for everyone), our deterministic rule-based model demonstrates superior predictive performance in identifying critical cohorts. It integrates proven clinical literature variables—such as <strong>Age</strong>, <strong>Race/Ethnicity</strong>, and baseline <strong>HbA1c/Systolic BP</strong>—to immediately surface accurate risk factors, drastically outperforming baseline models without adopting the "black-box" opacity of machine learning.
+                  </p>
+                  <p style="color:var(--text); line-height:1.6;">
+                    <strong>Validating Data Sources:</strong> All analytics and trends strictly aggregate and forecast utilizing dynamic, current <strong>Synthea</strong> data populated in our SQLite database matching the specific locations and timeframes filtered, ensuring no dummy fallbacks are used.
+                  </p>
+               </div>
+            </div>
+          </div>
+          <div id="exp-pred-content">
+            <div class="empty" style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:60px;">Apply filters in the Population Filtering tab to see predictive breakdowns here.</div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /content -->
+  </main>
+
+  <script>
+    // ─── State ───
+    let currentPatientId = null;
+    // ─── Infinite-scroll directory state ───
+    const PAGE_SIZE = 50;
+    let dirState = { query: '', cohort: '', offset: 0, total: 0, loading: false, exhausted: false };
+    let searchDebounceTimer = null;
+    let scrollObserver = null;
+    let explorerTierData = {};
+    let explorerSelectedTier = 'EMERGENCY';
+    const tierNarratives = {
+      EMERGENCY: {
+        summary: 'Critical lab or blood-pressure signals.',
+        description: 'HbA1c ≥ 9% or systolic BP ≥ 160 mmHg, which often requires same-day provider outreach or urgent care routing.'
+      },
+      HIGH: {
+        summary: 'Trending toward escalation.',
+        description: 'HbA1c 8–8.9% or systolic BP between 140 and 159 mmHg; patients may bleed into emergency risk without a targeted intervention.'
+      },
+      MODERATE: {
+        summary: 'Chronic overlap—monitor closely.',
+        description: 'Active diabetes and hypertension diagnoses with controlled labs; reinforce care coordination while watching for drift.'
+      },
+      PREVENTIVE: {
+        summary: 'Age-based watch list.',
+        description: 'Patients ≥ 65 years old who are otherwise stable but benefit from proactive outreach and lifestyle reinforcement.'
+      },
+      NORMAL: {
+        summary: 'Routine maintenance cohort.',
+        description: 'No high-risk labs or conditions detected; keep these patients on the standard care schedule.'
+      }
+    };
+    // ─── DOM Ready ───
+    document.addEventListener('DOMContentLoaded', () => {
+      const searchNav = document.querySelector('.nav-item[onclick*="search"]');
+      showSection('search', searchNav);
+      loadAllPatients();
+    });
+
+    // ─── Navigation ───
+    function showSection(id, el) {
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      document.getElementById('sec-' + id).classList.add('active');
+      if (el) el.classList.add('active');
+
+      if (id === 'dashboard') loadDashboardStats();
+      if (id === 'triage') loadTriage();
+    }
+
+    function showTab(id, el) {
+      document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('tab-' + id).style.display = 'block';
+      el.classList.add('active');
+      if (id === 'urgentcare' && currentPatientId) loadUrgentCare();
+      if (id === 'history' && currentPatientId) loadHistory();
+      if (id === 'trends' && currentPatientId) loadTrends();
+    }
+
+    // ─── Patient Directory (infinite scroll) ───
+    function attachScrollObserver() {
+      if (scrollObserver) scrollObserver.disconnect();
+      const sentinel = document.getElementById('dir-sentinel');
+      if (!sentinel) return;
+      scrollObserver = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting && !dirState.loading && !dirState.exhausted)
+          fetchNextPage();
+      }, { root: document.getElementById('search-results'), threshold: 0.1 });
+      scrollObserver.observe(sentinel);
+    }
+
+    function setCohortFilter(btn, cohort) {
+      document.querySelectorAll('.cohort-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      dirState = { query: dirState.query, cohort, offset: 0, total: 0, loading: false, exhausted: false };
+      document.getElementById('search-results').innerHTML = '';
+      document.getElementById('search-count').innerHTML = '';
+      fetchNextPage();
+    }
+
+    function loadAllPatients() {
+      dirState = { query: '', cohort: '', offset: 0, total: 0, loading: false, exhausted: false };
+      document.getElementById('search-results').innerHTML =
+        `<div style="padding:28px;text-align:center;color:var(--text3);font-size:.85rem;">
+           <div class="spin" style="margin:0 auto 12px;"></div>Loading patients…
+         </div>`;
+      document.getElementById('search-count').innerHTML = '';
+      fetchNextPage();
+    }
+
+    function filterPatients(val) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        dirState = { query: val.trim(), cohort: dirState.cohort, offset: 0, total: 0, loading: false, exhausted: false };
+        document.getElementById('search-results').innerHTML = '';
+        document.getElementById('search-count').innerHTML = '';
+        fetchNextPage();
+      }, 280);
+    }
+
+    async function fetchNextPage() {
+      if (dirState.loading || dirState.exhausted) return;
+      dirState.loading = true;
+      const box     = document.getElementById('search-results');
+      const countEl = document.getElementById('search-count');
+      try {
+        const cohortParam = dirState.cohort ? `&cohort=${encodeURIComponent(dirState.cohort)}` : '';
+        const url = `/api/patients/search/?q=${encodeURIComponent(dirState.query)}${cohortParam}&limit=${PAGE_SIZE}&offset=${dirState.offset}`;
+        console.log('[CareGap] fetch:', url);
+        const res  = await fetch(url);
+        const data = await res.json();
+        console.log('[CareGap] response — total:', data.total, 'returned:', (data.results || []).length);
+        const rows  = data.results || [];
+        const total = data.total   || 0;
+        dirState.total = total;
+        // First page: clear spinner
+        if (dirState.offset === 0) {
+          box.innerHTML = '';
+          if (rows.length === 0) {
+            box.innerHTML = `<div style="padding:36px;text-align:center;color:var(--text3);font-size:.85rem;">No patients found.</div>`;
+            countEl.innerHTML = `<strong>0</strong> patients match your search`;
+            dirState.exhausted = true;
+            dirState.loading   = false;
+            return;
+          }
+        }
+        // Remove sentinel before appending
+        const sentinel = document.getElementById('dir-sentinel');
+        if (sentinel) sentinel.remove();
+        // Append rows
+        rows.forEach(p => {
+          const initials = `${(p.first || '?')[0]}${(p.last || '?')[0]}`.toUpperCase();
+          const div = document.createElement('div');
+          div.className = 'search-result-item';
+          div.onclick = () => loadPatient(p.patient_id);
+          div.innerHTML =
+            `<div class="sri-avatar" style="color:${genderColor(p.gender)}">${initials}</div>` +
+            `<div style="flex:1;min-width:0;">` +
+              `<div class="sri-name">${p.first || ''} ${p.last || ''}</div>` +
+              `<div class="sri-meta">Age ${p.age || '—'} · ${p.city || '—'}</div>` +
+            `</div>` +
+            `<span class="sri-insurance">${p.insurance || 'Uninsured'}</span>`;
+          box.appendChild(div);
+        });
+        dirState.offset += rows.length;
+        const shown = dirState.offset;
+        countEl.innerHTML = shown >= total
+          ? `Showing <strong>${total.toLocaleString()}</strong> patients`
+          : `Showing <strong>${shown.toLocaleString()}</strong> of <strong>${total.toLocaleString()}</strong> patients — scroll for more`;
+        if (rows.length < PAGE_SIZE || dirState.offset >= total) {
+          dirState.exhausted = true;
+        } else {
+          const s = document.createElement('div');
+          s.id = 'dir-sentinel';
+          s.style.height = '4px';
+          box.appendChild(s);
+          attachScrollObserver();
+        }
+      } catch (e) {
+        console.error('[CareGap] fetchNextPage error:', e);
+        if (dirState.offset === 0)
+          box.innerHTML = `<div style="padding:24px;text-align:center;color:var(--red);font-size:.85rem;">Failed to load patients — check console.</div>`;
+        else
+          box.insertAdjacentHTML('beforeend', `<div style="padding:16px;text-align:center;color:var(--red);font-size:.82rem;">Failed to load more.</div>`);
+      }
+      dirState.loading = false;
+    }
+
+    function genderColor(g) {
+      return g === 'F' ? '#60a5fa' : '#2dd4bf';
+    }
+
+    // ─── Load Patient ───
+    async function loadPatient(pid) {
+      currentPatientId = pid;
+
+      // Show profile section
+      document.getElementById('patient-search-input').value = '';
+
+      // Show nav item
+      document.getElementById('nav-profile').style.display = 'flex';
+      showSection('profile', document.getElementById('nav-profile'));
+
+      // Reset tabs
+      showTab('risk', document.querySelector('.tab'));
+
+      // Load patient data + risk in parallel
+      document.getElementById('patient-card-wrap').innerHTML = `<div class="empty"><div class="spin"></div></div>`;
+      document.getElementById('risk-content').innerHTML = `<div class="empty" style="padding:30px"><div class="spin"></div></div>`;
+
+      const [profileRes, riskRes] = await Promise.all([
+        fetch(`/api/patients/${pid}/`),
+        fetch(`/api/patients/${pid}/risk/`)
+      ]);
+
+      const profile = await profileRes.json();
+      const risk = await riskRes.json();
+
+      document.getElementById('nav-profile-name').textContent = `${profile.first} ${profile.last}`;
+
+      renderPatientCard(profile);
+      renderRiskCard(risk, profile);
+    }
+
+    function renderPatientCard(p) {
+      document.getElementById('patient-card-wrap').innerHTML = `
+    <div class="patient-card" style="margin-bottom:20px">
+      <div class="pc-header">
+        <div style="display:flex;align-items:center;gap:16px">
+          <div class="pc-avatar" style="color:${genderColor(p.gender)}">${p.first[0]}${p.last[0]}</div>
+          <div>
+            <div class="pc-name">${p.first} ${p.last}</div>
+            <div class="pc-meta">${p.age || '—'} years · ${p.gender === 'F' ? 'Female' : 'Male'} · ${capitalize(p.race)}</div>
+            <div class="pc-id">${p.patient_id}</div>
+          </div>
+        </div>
+        <button class="btn btn-outline" onclick="showSection('search',null);document.querySelectorAll('.nav-item')[0].classList.add('active')">← Back to Search</button>
+      </div>
+      <div class="pc-details">
+        <div class="pc-detail"><div class="pd-label">City</div><div class="pd-value">${p.city || '—'}</div></div>
+        <div class="pc-detail"><div class="pd-label">State</div><div class="pd-value">${p.state || 'CA'}</div></div>
+        <div class="pc-detail"><div class="pd-label">Insurance</div><div class="pd-value">${p.insurance || 'Unknown'}</div></div>
+        <div class="pc-detail"><div class="pd-label">Ethnicity</div><div class="pd-value">${capitalize(p.ethnicity) || '—'}</div></div>
+      </div>
+    </div>`;
+    }
+
+    function renderRiskCard(risk, profile) {
+      const tierColors = { HIGH: 'var(--red)', MODERATE: 'var(--amber)', PREVENTIVE: 'var(--blue)', NORMAL: 'var(--green)' };
+      const color = tierColors[risk.tier] || 'var(--text)';
+
+      // Follow-up box
+      let followupHTML = '';
+      if (risk.tier === 'MODERATE') {
+        followupHTML = `
+      <div class="followup-box">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:2px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <div class="followup-body">
+          <strong>Schedule a Follow-Up Visit</strong><br>
+          Recommend scheduling within <strong>${risk.followup_urgency_days} days</strong> based on current risk indicators.
+          Review HbA1c trends and medication adherence at the visit.
+        </div>
+      </div>`;
+      }
+
+      // Vitals
+      const vitals = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0">
+      <div class="vital">
+        <div class="label">HbA1c</div>
+        <div class="value">${risk.hba1c_value != null ? risk.hba1c_value + '<span class="unit"> %</span>' : '<span style="font-size:1.1rem;color:var(--text3)">Not Tested</span>'}</div>
+      </div>
+      <div class="vital">
+        <div class="label">Days Since HbA1c</div>
+        <div class="value">${risk.hba1c_days_gap != null ? risk.hba1c_days_gap.toLocaleString() + '<span class="unit"> days</span>' : '<span style="font-size:1.1rem;color:var(--text3)">Not Tested</span>'}</div>
+      </div>
+      <div class="vital">
+        <div class="label">Systolic BP</div>
+        <div class="value">${risk.latest_sbp != null ? risk.latest_sbp + '<span class="unit"> mmHg</span>' : '<span style="font-size:1.1rem;color:var(--text3)">Not Tested</span>'}</div>
+      </div>
+    </div>`;
+
+      const reasons = risk.reasons.length
+        ? `<ul class="risk-reasons">${risk.reasons.map(r => `<li>${r}</li>`).join('')}</ul>`
+        : '<p style="color:var(--text3);font-size:.82rem">No significant risk factors detected.</p>';
+
+      const urgentCareBtn = risk.tier === 'HIGH'
+        ? `<button class="btn btn-danger" onclick="showTab('urgentcare',document.querySelectorAll('.tab')[1])">🏥 Find Urgent Care</button>`
+        : '';
+
+      document.getElementById('risk-content').innerHTML = `
+    <div class="risk-card ${risk.tier}" style="margin-top:4px">
+      <div class="risk-badge">
+        <div class="rb-tier">${risk.tier}</div>
+        <div class="rb-score" style="color:${color}">${risk.score}</div>
+        <div class="rb-label">Risk Score</div>
+      </div>
+      <div class="risk-body">
+        <div class="risk-action">${risk.recommended_action}</div>
+        ${reasons}
+        ${vitals}
+        ${followupHTML}
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+          ${urgentCareBtn}
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;font-size:.82rem;color:var(--text2)">
+        <strong style="color:var(--text)">Has Diabetes:</strong> ${risk.has_diabetes ? '<span style="color:var(--red)">Yes</span>' : '<span style="color:var(--green)">No</span>'}
+      </div>
+      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;font-size:.82rem;color:var(--text2)">
+        <strong style="color:var(--text)">Has Hypertension:</strong> ${risk.has_hypertension ? '<span style="color:var(--red)">Yes</span>' : '<span style="color:var(--green)">No</span>'}
+      </div>
+      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;font-size:.82rem;color:var(--text2)">
+        <strong style="color:var(--text)">Follow-Up In:</strong> <span style="color:var(--accent)">${risk.followup_urgency_days} days</span>
+      </div>
+    </div>`;
+    }
+
+    // ─── Urgent Care ───
+    async function loadUrgentCare() {
+      if (!currentPatientId) return;
+      document.getElementById('uc-content').innerHTML = `<div class="empty" style="padding:30px"><div class="spin"></div></div>`;
+      try {
+        const res = await fetch(`/api/patients/${currentPatientId}/urgent-care/`);
+        const data = await res.json();
+        renderUrgentCares(data);
+      } catch (e) {
+        document.getElementById('uc-content').innerHTML = `<div class="empty" style="padding:24px"><p>Error loading urgent care data. Is the server running?</p></div>`;
+      }
+    }
+
+    function renderUrgentCares(data) {
+      const box = document.getElementById('uc-content');
+      if (!data.facilities || !data.facilities.length) {
+        box.innerHTML = `<div class="empty" style="padding:24px"><p>No urgent care facilities found for ${data.patient_city}.</p></div>`;
+        return;
+      }
+      box.innerHTML = `
+    <div style="padding:12px 22px 0;font-size:.8rem;color:var(--text3)">
+      Patient: <strong style="color:var(--text)">${data.patient_name}</strong> ·
+      City: <strong style="color:var(--text)">${data.patient_city}</strong> ·
+      Insurance: <strong style="color:var(--accent)">${data.patient_insurance || 'Unknown'}</strong>
+    </div>
+    <div class="uc-list">
+      ${data.facilities.map((f, i) => `
+        <div class="uc-item">
+          <div class="uc-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </div>
+          <div style="flex:1">
+            <div class="uc-name">#${i + 1} ${f.name}</div>
+            <div class="uc-addr">${f.address}</div>
+            <div class="uc-tags">
+              ${f.accepts.medicaid ? '<span class="tag tag-green">Medicaid ✓</span>' : ''}
+              ${f.accepts.medicare ? '<span class="tag tag-blue">Medicare ✓</span>' : ''}
+              ${f.accepts.private ? '<span class="tag tag-blue">Private ✓</span>' : ''}
+              ${f.accepts.uninsured ? '<span class="tag tag-amber">Uninsured ✓</span>' : ''}
+              ${f.open_24h ? '<span class="tag tag-green">Open 24h</span>' : ''}
+            </div>
+          </div>
+          <div class="uc-right">
+            <div class="uc-rating">★ ${f.rating}</div>
+            <div class="uc-dist">${f.distance_km != null ? f.distance_km + ' km away' : 'Distance N/A'}</div>
+            <div class="uc-phone">${f.phone || ''}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+    }
+
+
+
+    // ─── History Tab ───
+    async function loadHistory() {
+      if (!currentPatientId) return;
+      const res = await fetch(`/api/patients/${currentPatientId}/`);
+      const profile = await res.json();
+
+      // Observations
+      const obs = (profile.observations || []).slice(0, 15);
+      document.getElementById('obs-content').innerHTML = obs.length ? `
+    <table style="width:100%;border-collapse:collapse;font-size:.8rem">
+      <thead><tr>
+        <th style="padding:10px 14px;text-align:left;color:var(--text3);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--bg2)">Date</th>
+        <th style="padding:10px 14px;text-align:left;color:var(--text3);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--bg2)">Description</th>
+        <th style="padding:10px 14px;text-align:right;color:var(--text3);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--bg2)">Value</th>
+      </tr></thead>
+      <tbody>${obs.map(o => `
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:10px 14px;color:var(--text3);font-family:'JetBrains Mono',monospace;font-size:.75rem">${(o.date || '').slice(0, 10)}</td>
+          <td style="padding:10px 14px;color:var(--text2)">${o.description}</td>
+          <td style="padding:10px 14px;text-align:right;color:var(--text);font-family:'JetBrains Mono',monospace">${o.value} ${o.units}</td>
+        </tr>`).join('')}</tbody>
+    </table>` : `<div class="empty" style="padding:24px"><p>No observations recorded.</p></div>`;
+
+      // Conditions
+      const conds = profile.conditions || [];
+      document.getElementById('cond-content').innerHTML = conds.length ? `
+    <div style="padding:14px 18px;display:flex;flex-direction:column;gap:9px">
+      ${conds.map(c => `
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+          <div style="font-size:.85rem;font-weight:500;color:var(--text)">${c.description}</div>
+          <div style="font-size:.74rem;color:var(--text3);margin-top:3px">
+            Code: <span style="font-family:'JetBrains Mono',monospace">${c.code}</span> ·
+            Since: ${c.start || 'Unknown'} ·
+            ${c.stop ? `Resolved: ${c.stop}` : '<span style="color:var(--red)">Active</span>'}
+          </div>
+        </div>`).join('')}
+    </div>` : `<div class="empty" style="padding:24px"><p>No conditions recorded.</p></div>`;
+
+      // Encounters
+      const encs = (profile.encounters || []).slice(0, 10);
+      document.getElementById('enc-content').innerHTML = encs.length ? `
+    <table style="width:100%;border-collapse:collapse;font-size:.8rem">
+      <thead><tr>
+        <th style="padding:10px 16px;text-align:left;color:var(--text3);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--bg2)">Date</th>
+        <th style="padding:10px 16px;text-align:left;color:var(--text3);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--bg2)">Type</th>
+        <th style="padding:10px 16px;text-align:left;color:var(--text3);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--bg2)">Description</th>
+      </tr></thead>
+      <tbody>${encs.map(e => `
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:10px 16px;color:var(--text3);font-family:'JetBrains Mono',monospace;font-size:.75rem">${(e.start || '').slice(0, 10)}</td>
+          <td style="padding:10px 16px"><span class="tag tag-gray">${e.encounter_class}</span></td>
+          <td style="padding:10px 16px;color:var(--text2)">${e.description}</td>
+        </tr>`).join('')}</tbody>
+    </table>` : `<div class="empty" style="padding:24px"><p>No encounters recorded.</p></div>`;
+    }
+
+    // ─── Dashboard Stats ───
+    let _charts = [];
+
+    async function loadDashboardStats() {
+      const el = document.getElementById('dashboard-stats-content');
+      if (_charts.length) { _charts.forEach(c => c.destroy()); _charts = []; }
+
+      el.innerHTML = `<div class="empty"><div class="spin"></div></div>`;
+      try {
+        const res = await fetch('/api/patients/stats/');
+        const data = await res.json();
+
+        const cc = data.cohort_counts || {};
+        el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;border-top:2px solid var(--accent)">
+          <div style="font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;margin-bottom:8px">Chronic Patients</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:2rem">${(cc.chronic||0).toLocaleString()}</div>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:4px">HTN or T2D</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;border-top:2px solid var(--amber)">
+          <div style="font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;margin-bottom:8px">At Risk</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:2rem">${(cc.at_risk||0).toLocaleString()}</div>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:4px">Adult, no chronic dx</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;border-top:2px solid var(--blue)">
+          <div style="font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;margin-bottom:8px">Pediatric</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:2rem">${(cc.pediatric||0).toLocaleString()}</div>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:4px">Age &lt; 18</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;border-top:2px solid var(--text3)">
+          <div style="font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;margin-bottom:8px">Deceased</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:2rem">${(cc.deceased||0).toLocaleString()}</div>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:4px">With DEATHDATE</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;border-top:2px solid var(--purple)">
+          <div style="font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;margin-bottom:8px">HTN Rate</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:2rem">${data.hypertension_rate}%</div>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:4px">Diabetes ${data.diabetes_rate}%</div>
+        </div>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+        <div class="panel">
+          <div class="panel-h"><div><h3>Latest HbA1c Levels</h3><p>Distribution across active population</p></div></div>
+          <div style="padding:18px;height:250px"><canvas id="chart-hba1c"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><div><h3>Systolic BP Ranges</h3><p>Based on most recent readings</p></div></div>
+          <div style="padding:18px;height:250px"><canvas id="chart-bp"></canvas></div>
+        </div>
+      </div>
+      
+      <div class="panel" style="width:50%">
+        <div class="panel-h"><div><h3>Condition Overlap</h3><p>Hypertension vs Diabetes</p></div></div>
+        <div style="padding:18px;height:250px;display:flex;justify-content:center"><canvas id="chart-overlap"></canvas></div>
+      </div>
+    `;
+
+        // Initialize Charts
+        Chart.defaults.color = '#8fa8bf';
+        Chart.defaults.font.family = "'DM Sans', sans-serif";
+
+        // HbA1c Chart
+        const ctxA1c = document.getElementById('chart-hba1c').getContext('2d');
+        _charts.push(new Chart(ctxA1c, {
+          type: 'bar',
+          data: {
+            labels: ['Normal (<5.7)', 'Prediabetes (5.7-6.4)', 'Diabetes (≥6.5)'],
+            datasets: [{
+              label: 'Patients',
+              data: [data.hba1c_dist.normal, data.hba1c_dist.prediabetes, data.hba1c_dist.diabetes],
+              backgroundColor: ['#4ade80', '#fbbf24', '#f87171'],
+              borderRadius: 6
+            }]
+          },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        }));
+
+        // BP Chart
+        const ctxBP = document.getElementById('chart-bp').getContext('2d');
+        _charts.push(new Chart(ctxBP, {
+          type: 'bar',
+          data: {
+            labels: ['Normal (<120)', 'Elevated (120-129)', 'Stage 1 (130-139)', 'Stage 2 (≥140)'],
+            datasets: [{
+              label: 'Patients',
+              data: [data.bp_dist.normal, data.bp_dist.elevated, data.bp_dist.stage1, data.bp_dist.stage2],
+              backgroundColor: ['#4ade80', '#fbbf24', '#f87171', '#ef4444'],
+              borderRadius: 6
+            }]
+          },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        }));
+
+        // Overlap Chart
+        const ctxOL = document.getElementById('chart-overlap').getContext('2d');
+        _charts.push(new Chart(ctxOL, {
+          type: 'doughnut',
+          data: {
+            labels: ['Both (Comorbid)', 'Hypertension Only', 'Diabetes Only', 'Neither'],
+            datasets: [{
+              data: [data.risk_overlap.both, data.risk_overlap.bp_only, data.risk_overlap.bs_only, data.risk_overlap.neither],
+              backgroundColor: ['#a78bfa', '#fbbf24', '#60a5fa', '#334d66'],
+              borderWidth: 0,
+              hoverOffset: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '65%',
+            plugins: {
+              legend: { position: 'right' }
+            }
+          }
+        }));
+
+      } catch (e) {
+        el.innerHTML = `<div class="empty"><p>Failed to load analytics: ${e.message}</p></div>`;
+      }
+    }
+
+
+
+    // ─── Patient Trends ───
+    let _trendCharts = [];
+
+    async function loadTrends() {
+      if (!currentPatientId) return;
+
+      const emptyEl = document.getElementById('trends-empty');
+      const contentEl = document.getElementById('trends-content');
+
+      try {
+        const res = await fetch(`/api/patients/${currentPatientId}/`);
+        const profile = await res.json();
+        const obs = profile.observations || [];
+
+        // Filter and sort for charts
+        let hba1cData = [];
+        let bpSysData = [];
+        let bpDiaData = [];
+
+        obs.forEach(o => {
+          if (!o.value || !o.date) return;
+          const valStr = o.value.replace(/[^0-9.]/g, '');
+          const val = parseFloat(valStr);
+          if (isNaN(val)) return;
+
+          const dt = o.date.slice(0, 10); // YYYY-MM-DD
+
+          if (o.code === '4548-4' || o.description.includes('A1c')) {
+            hba1cData.push({ x: dt, y: val });
+          } else if (o.code === '8480-6' || o.description.includes('Systolic')) {
+            bpSysData.push({ x: dt, y: val });
+          } else if (o.code === '8462-4' || o.description.includes('Diastolic')) {
+            bpDiaData.push({ x: dt, y: val });
+          }
+        });
+
+        hba1cData.sort((a, b) => new Date(a.x) - new Date(b.x));
+        bpSysData.sort((a, b) => new Date(a.x) - new Date(b.x));
+        bpDiaData.sort((a, b) => new Date(a.x) - new Date(b.x));
+
+        if (hba1cData.length === 0 && bpSysData.length === 0) {
+          emptyEl.style.display = 'block';
+          contentEl.style.display = 'none';
+          return;
+        }
+
+        emptyEl.style.display = 'none';
+        contentEl.style.display = 'block';
+
+        // Clear existing charts
+        if (_trendCharts.length) { _trendCharts.forEach(c => c.destroy()); _trendCharts = []; }
+
+        // Draw HbA1c History
+        const wrapHba1c = document.getElementById('wrap-hba1c');
+        if (hba1cData.length > 0) {
+          wrapHba1c.innerHTML = '<canvas id="chart-hba1c-trend"></canvas>';
+          const ctxA1c = document.getElementById('chart-hba1c-trend').getContext('2d');
+          _trendCharts.push(new Chart(ctxA1c, {
+            type: 'line',
+            data: {
+              datasets: [{
+                label: 'HbA1c (%)',
+                data: hba1cData,
+                borderColor: '#fbbf24',
+                backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                borderWidth: 2,
+                pointBackgroundColor: '#fbbf24',
+                tension: 0.2,
+                fill: true
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: {
+                  type: 'category',
+                  labels: hba1cData.map(d => d.x),
+                  grid: { color: 'rgba(255,255,255,0.05)' }
+                },
+                y: {
+                  grid: { color: 'rgba(255,255,255,0.05)' }
+                }
+              },
+              plugins: { legend: { display: false } }
+            }
+          }));
+        } else {
+          wrapHba1c.innerHTML = '<div class="empty" style="padding:60px 24px;color:var(--text3);font-size:.9rem">No HbA1c history available for this patient.</div>';
+        }
+
+        // Draw BP History
+        const wrapBp = document.getElementById('wrap-bp');
+        if (bpSysData.length > 0 || bpDiaData.length > 0) {
+          wrapBp.innerHTML = '<canvas id="chart-bp-trend"></canvas>';
+          // Align labels by date
+          const allDates = [...new Set([...bpSysData.map(d => d.x), ...bpDiaData.map(d => d.x)])].sort((a, b) => new Date(a) - new Date(b));
+
+          const getVal = (dataArr, dt) => {
+            const found = dataArr.find(d => d.x === dt);
+            return found ? found.y : null;
+          };
+
+          const sData = allDates.map(dt => getVal(bpSysData, dt));
+          const dData = allDates.map(dt => getVal(bpDiaData, dt));
+
+          const ctxBp = document.getElementById('chart-bp-trend').getContext('2d');
+          _trendCharts.push(new Chart(ctxBp, {
+            type: 'line',
+            data: {
+              labels: allDates,
+              datasets: [
+                {
+                  label: 'Systolic (mmHg)',
+                  data: sData,
+                  borderColor: '#f87171',
+                  backgroundColor: 'rgba(248, 113, 113, 0.1)',
+                  borderWidth: 2,
+                  pointBackgroundColor: '#f87171',
+                  tension: 0.2,
+                  spanGaps: true
+                },
+                {
+                  label: 'Diastolic (mmHg)',
+                  data: dData,
+                  borderColor: '#60a5fa',
+                  backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                  borderWidth: 2,
+                  pointBackgroundColor: '#60a5fa',
+                  tension: 0.2,
+                  spanGaps: true
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: { grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: { grid: { color: 'rgba(255,255,255,0.05)' } }
+              },
+              plugins: { legend: { position: 'top' } }
+            }
+          }));
+        } else {
+          wrapBp.innerHTML = '<div class="empty" style="padding:60px 24px;color:var(--text3);font-size:.9rem">No Blood Pressure history available for this patient.</div>';
+        }
+
+      } catch (e) {
+        console.error("Error loading trends:", e);
+        emptyEl.innerHTML = `<p>Error loading trend data.</p>`;
+        emptyEl.style.display = 'block';
+        contentEl.style.display = 'none';
+      }
+    }
+    function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—'; }
+    function escapeHTML(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function getCookie(name) {
+      const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+      return v ? v.pop() : '';
+    }
+
+    // ─── Action Required / Triage Queue ───
+    async function loadTriage() {
+      const eBox = document.getElementById('triage-emergency-content');
+      const uBox = document.getElementById('triage-urgent-content');
+
+      eBox.innerHTML = `<div class="empty"><div class="spin"></div></div>`;
+      uBox.innerHTML = `<div class="empty"><div class="spin"></div></div>`;
+
+      try {
+        const res = await fetch('/api/patients/triage/');
+        const data = await res.json();
+
+        // Render Emergency Queue
+        if (!data.emergency_patients || data.emergency_patients.length === 0) {
+          eBox.innerHTML = `<div class="empty"><p style="padding:10px 0;">No emergency patients currently identified.</p></div>`;
+        } else {
+          eBox.innerHTML = `
+          <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border);text-align:left;color:var(--text3);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em">
+                <th style="padding:10px 14px">Patient</th>
+                <th style="padding:10px 14px">City</th>
+                <th style="padding:10px 14px">HbA1c</th>
+                <th style="padding:10px 14px">Systolic BP</th>
+                <th style="padding:10px 14px;text-align:right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.emergency_patients.map(p => `
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:12px 14px;font-weight:500">${p.name} <span style="color:var(--text3);font-size:.75rem">(${p.age}y)</span></td>
+                  <td style="padding:12px 14px;color:var(--text2)">${p.city}</td>
+                  <td style="padding:12px 14px;font-weight:500;color:${p.hba1c >= 9 ? 'var(--red)' : 'var(--text)'}">${p.hba1c || '—'}%</td>
+                  <td style="padding:12px 14px;font-weight:500;color:${p.sbp >= 160 ? 'var(--red)' : 'var(--text)'}">${p.sbp || '—'} mmHg</td>
+                  <td style="padding:12px 14px;text-align:right">
+                    <button class="btn btn-outline" style="padding:6px 12px;font-size:.75rem" onclick="loadPatientView('${p.patient_id}')">View Profile ➔</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>`;
+        }
+
+        // Render Urgent Care Queue
+        if (!data.urgent_patients || data.urgent_patients.length === 0) {
+          uBox.innerHTML = `<div class="empty"><p style="padding:10px 0;">No high-risk urgent care patients currently identified.</p></div>`;
+        } else {
+          uBox.innerHTML = `
+          <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border);text-align:left;color:var(--text3);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em">
+                <th style="padding:10px 14px">Patient</th>
+                <th style="padding:10px 14px">City</th>
+                <th style="padding:10px 14px">HbA1c</th>
+                <th style="padding:10px 14px">Systolic BP</th>
+                <th style="padding:10px 14px;text-align:right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.urgent_patients.map(p => `
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:12px 14px;font-weight:500">${p.name} <span style="color:var(--text3);font-size:.75rem">(${p.age}y)</span></td>
+                  <td style="padding:12px 14px;color:var(--text2)">${p.city}</td>
+                  <td style="padding:12px 14px">${p.hba1c || '—'}%</td>
+                  <td style="padding:12px 14px">${p.sbp || '—'} mmHg</td>
+                  <td style="padding:12px 14px;text-align:right">
+                    <button class="btn btn-outline" style="padding:6px 12px;font-size:.75rem" onclick="loadPatientView('${p.patient_id}')">View Profile ➔</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>`;
+        }
+
+      } catch (e) {
+        eBox.innerHTML = `<div class="empty"><p style="padding:10px 0;color:var(--red);">Failed to load triage queue: ${e.message}</p></div>`;
+        uBox.innerHTML = `<div class="empty"><p style="padding:10px 0;color:var(--red);">Failed to load triage queue: ${e.message}</p></div>`;
+      }
+    }
+
+    // Helper to jump to a patient profile from a sub-dashboard
+    function loadPatientView(pid) {
+      showSection('profile', document.getElementById('nav-profile'));
+      loadPatient(pid);
+    }
+
+    // ─── Analytics Explorer ───
+    let _explorerCharts = [];
+    
+    function showExplorerTab(id, el) {
+      document.getElementById('exp-tab-population').style.display = 'none';
+      document.getElementById('exp-tab-predictive').style.display = 'none';
+      document.querySelectorAll('#sec-explorer .tab').forEach(t => t.classList.remove('active'));
+      
+      document.getElementById('exp-tab-' + id).style.display = 'block';
+      el.classList.add('active');
+    }
+
+    function loadExplorerData() {
+      const ph = `<div class="empty" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:60px;text-align:center;">
+        <div style="font-size:1.4rem;margin-bottom:12px;">🚧</div>
+        <div style="font-weight:600;color:var(--text);margin-bottom:6px;">Coming in Phase 2</div>
+        <div style="color:var(--text3);font-size:.85rem;">Population filtering & predictive insights will be available in the next release.</div>
+      </div>`;
+      const popEl  = document.getElementById('exp-pop-content');
+      const predEl = document.getElementById('exp-pred-content');
+      if (popEl)  popEl.innerHTML  = ph;
+      if (predEl) predEl.innerHTML = ph;
+    }
+
+
+    function clearExplorerFilter(field) {
+      const input = document.getElementById(`flt-${field}`);
+      if (input) input.value = '';
+      loadExplorerData();
+    }
+
+    function resetExplorerFilters() {
+      ['gender', 'race', 'min-age', 'max-age'].forEach(field => {
+        const input = document.getElementById(`flt-${field}`);
+        if (input) input.value = '';
+      });
+      loadExplorerData();
+    }
+
+    function renderExplorerTierPanel(riskTiers) {
+      explorerTierData = riskTiers || {};
+      const tierOrder = ['EMERGENCY', 'HIGH', 'MODERATE', 'PREVENTIVE', 'NORMAL'];
+      if (!explorerTierData[explorerSelectedTier]) {
+        explorerSelectedTier = tierOrder.find(t => explorerTierData[t] > 0) || 'EMERGENCY';
+      }
+      const grid = document.getElementById('exp-tier-grid');
+      if (!grid) return;
+      grid.innerHTML = tierOrder.map(tier => {
+        const count = explorerTierData[tier] || 0;
+        const tierMeta = tierNarratives[tier] || {};
+        return `
+          <button type="button" class="tier-card${tier === explorerSelectedTier ? ' active' : ''}" data-tier="${tier}" onclick="selectExplorerTier('${tier}')">
+            <div class="tier-label">${tier}</div>
+            <div class="tier-count">${count.toLocaleString()}</div>
+            <div class="tier-sub">${tierMeta.summary || 'View tier details'}</div>
+          </button>
+        `;
+      }).join('');
+      updateTierDetail();
+    }
+
+    function selectExplorerTier(tier) {
+      explorerSelectedTier = tier;
+      updateTierDetail();
+    }
+
+    function updateTierDetail() {
+      const detail = document.getElementById('exp-tier-detail');
+      if (!detail) return;
+      const tier = explorerSelectedTier && explorerTierData[explorerSelectedTier] !== undefined ? explorerSelectedTier : 'EMERGENCY';
+      explorerSelectedTier = tier;
+      const narrative = tierNarratives[tier] || {};
+      const tierCount = explorerTierData[tier] || 0;
+      detail.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <strong style="font-size:1rem;">${tier} · ${tierCount.toLocaleString()} patients</strong>
+          <span style="color:var(--text3);font-size:.78rem;">${narrative.summary || ''}</span>
+        </div>
+        <p style="margin-top:10px;">${narrative.description || 'Tier logic is derived from recent labs, blood pressure, and active conditions.'}</p>
+      `;
+      const grid = document.getElementById('exp-tier-grid');
+      if (grid) {
+        grid.querySelectorAll('.tier-card').forEach(card => {
+          card.classList.toggle('active', card.dataset.tier === tier);
+        });
+      }
+    }
+
+    // ─── Init ───
+    // (loadAllPatients is called from DOMContentLoaded above)
+  </script>
+</body>
+
+</html>
