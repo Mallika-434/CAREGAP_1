@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Patient, Observation, Encounter, Condition, UrgentCare
+from .models import Patient, Observation, Encounter, Condition, Medication, UrgentCare
 
 
 class ObservationSerializer(serializers.ModelSerializer):
@@ -20,6 +20,12 @@ class ConditionSerializer(serializers.ModelSerializer):
         fields = ['id', 'start', 'stop', 'code', 'description']
 
 
+class MedicationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Medication
+        fields = ['id', 'start', 'stop', 'code', 'description', 'reason_description']
+
+
 class PatientListSerializer(serializers.ModelSerializer):
     """Lightweight — used for search results list"""
     full_name = serializers.SerializerMethodField()
@@ -28,7 +34,7 @@ class PatientListSerializer(serializers.ModelSerializer):
         model  = Patient
         fields = [
             'id', 'patient_id', 'full_name', 'first', 'last',
-            'age', 'gender', 'race', 'city', 'insurance'
+            'age', 'gender', 'race', 'city', 'insurance', 'cohort',
         ]
 
     def get_full_name(self, obj):
@@ -36,11 +42,12 @@ class PatientListSerializer(serializers.ModelSerializer):
 
 
 class PatientDetailSerializer(serializers.ModelSerializer):
-    """Full detail — includes related data"""
+    """Full detail — includes all related data"""
     full_name    = serializers.SerializerMethodField()
     observations = ObservationSerializer(many=True, read_only=True)
     encounters   = EncounterSerializer(many=True, read_only=True)
     conditions   = ConditionSerializer(many=True, read_only=True)
+    medications  = MedicationSerializer(many=True, read_only=True)
 
     class Meta:
         model  = Patient
@@ -49,7 +56,8 @@ class PatientDetailSerializer(serializers.ModelSerializer):
             'birthdate', 'age', 'gender', 'race', 'ethnicity',
             'city', 'state', 'zip_code', 'insurance',
             'lat', 'lon',
-            'observations', 'encounters', 'conditions'
+            'is_deceased', 'cohort',
+            'observations', 'encounters', 'conditions', 'medications',
         ]
 
     def get_full_name(self, obj):

@@ -1870,18 +1870,10 @@
     // ─── Dashboard Stats ───
     let _charts = [];
 
-    async function loadDashboardStats() {
-      const el = document.getElementById('dashboard-stats-content');
-      if (_charts.length) { _charts.forEach(c => c.destroy()); _charts = []; }
-
-      el.innerHTML = `<div class="empty"><div class="spin"></div></div>`;
-      try {
-        const res = await fetch('/api/patients/stats/');
-        const data = await res.json();
-
-        const cc = data.cohort_counts || {};
-        el.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px">
+    // Helper: build the 5 stat cards from any data object (basic or full)
+    function _statCardsHtml(d) {
+      const cc = d.cohort_counts || {};
+      return `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px">
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;border-top:2px solid var(--accent)">
           <div style="font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;margin-bottom:8px">Chronic Patients</div>
           <div style="font-family:'DM Serif Display',serif;font-size:2rem">${(cc.chronic||0).toLocaleString()}</div>
@@ -1904,11 +1896,90 @@
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;border-top:2px solid var(--purple)">
           <div style="font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;margin-bottom:8px">HTN Rate</div>
-          <div style="font-family:'DM Serif Display',serif;font-size:2rem">${data.hypertension_rate}%</div>
-          <div style="font-size:.72rem;color:var(--text3);margin-top:4px">Diabetes ${data.diabetes_rate}%</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:2rem">${d.hypertension_rate||0}%</div>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:4px">Diabetes ${d.diabetes_rate||0}%</div>
+        </div>
+      </div>`;
+    }
+
+    function _chartsSpinnerHtml() {
+      return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+        <div class="panel"><div class="panel-h"><div><h3>Latest HbA1c Levels</h3><p>Computing…</p></div></div>
+          <div style="height:250px;display:flex;align-items:center;justify-content:center;"><div class="spin"></div></div>
+        </div>
+        <div class="panel"><div class="panel-h"><div><h3>Systolic BP Ranges</h3><p>Computing…</p></div></div>
+          <div style="height:250px;display:flex;align-items:center;justify-content:center;"><div class="spin"></div></div>
         </div>
       </div>
-      
+      <div class="panel" style="width:50%">
+        <div class="panel-h"><div><h3>Condition Overlap</h3><p>Computing…</p></div></div>
+        <div style="height:250px;display:flex;align-items:center;justify-content:center;"><div class="spin"></div></div>
+      </div>`;
+    }
+
+    function _renderCharts(data) {
+      Chart.defaults.color = '#8fa8bf';
+      Chart.defaults.font.family = "'DM Sans', sans-serif";
+
+      const ctxA1c = document.getElementById('chart-hba1c');
+      if (ctxA1c) _charts.push(new Chart(ctxA1c.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: ['Normal (<5.7)', 'Prediabetes (5.7–6.4)', 'Diabetes (≥6.5)'],
+          datasets: [{ label: 'Patients',
+            data: [data.hba1c_dist.normal, data.hba1c_dist.prediabetes, data.hba1c_dist.diabetes],
+            backgroundColor: ['#4ade80', '#fbbf24', '#f87171'], borderRadius: 6 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      }));
+
+      const ctxBP = document.getElementById('chart-bp');
+      if (ctxBP) _charts.push(new Chart(ctxBP.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: ['Normal (<120)', 'Elevated (120–129)', 'Stage 1 (130–139)', 'Stage 2 (≥140)'],
+          datasets: [{ label: 'Patients',
+            data: [data.bp_dist.normal, data.bp_dist.elevated, data.bp_dist.stage1, data.bp_dist.stage2],
+            backgroundColor: ['#4ade80', '#fbbf24', '#f87171', '#ef4444'], borderRadius: 6 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      }));
+
+      const ctxOL = document.getElementById('chart-overlap');
+      if (ctxOL) _charts.push(new Chart(ctxOL.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: ['Both (Comorbid)', 'Hypertension Only', 'Diabetes Only', 'Neither'],
+          datasets: [{ data: [data.risk_overlap.both, data.risk_overlap.bp_only, data.risk_overlap.bs_only, data.risk_overlap.neither],
+            backgroundColor: ['#a78bfa', '#fbbf24', '#60a5fa', '#334d66'], borderWidth: 0, hoverOffset: 4 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '65%',
+          plugins: { legend: { position: 'right' } } }
+      }));
+    }
+
+    async function loadDashboardStats() {
+      const el = document.getElementById('dashboard-stats-content');
+      if (_charts.length) { _charts.forEach(c => c.destroy()); _charts = []; }
+
+      // ── Phase 1: basic endpoint (< 1 s) — show stat cards instantly ──
+      el.innerHTML = `<div class="empty"><div class="spin"></div></div>`;
+      try {
+        const basicRes  = await fetch('/api/patients/stats/basic/');
+        const basicData = await basicRes.json();
+        // Show stat cards + chart spinners immediately
+        el.innerHTML = _statCardsHtml(basicData) + _chartsSpinnerHtml();
+      } catch (e) {
+        el.innerHTML = `<div class="empty"><p style="color:var(--red)">Failed to load stats: ${e.message}</p></div>`;
+        return;
+      }
+
+      // ── Phase 2: full stats — charts + care gaps (runs in background) ──
+      try {
+        const res  = await fetch('/api/patients/stats/');
+        const data = await res.json();
+
+        el.innerHTML = _statCardsHtml(data) + `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
         <div class="panel">
           <div class="panel-h"><div><h3>Latest HbA1c Levels</h3><p>Distribution across active population</p></div></div>
@@ -1919,74 +1990,15 @@
           <div style="padding:18px;height:250px"><canvas id="chart-bp"></canvas></div>
         </div>
       </div>
-      
       <div class="panel" style="width:50%">
         <div class="panel-h"><div><h3>Condition Overlap</h3><p>Hypertension vs Diabetes</p></div></div>
         <div style="padding:18px;height:250px;display:flex;justify-content:center"><canvas id="chart-overlap"></canvas></div>
-      </div>
-    `;
+      </div>`;
 
-        // Initialize Charts
-        Chart.defaults.color = '#8fa8bf';
-        Chart.defaults.font.family = "'DM Sans', sans-serif";
-
-        // HbA1c Chart
-        const ctxA1c = document.getElementById('chart-hba1c').getContext('2d');
-        _charts.push(new Chart(ctxA1c, {
-          type: 'bar',
-          data: {
-            labels: ['Normal (<5.7)', 'Prediabetes (5.7-6.4)', 'Diabetes (≥6.5)'],
-            datasets: [{
-              label: 'Patients',
-              data: [data.hba1c_dist.normal, data.hba1c_dist.prediabetes, data.hba1c_dist.diabetes],
-              backgroundColor: ['#4ade80', '#fbbf24', '#f87171'],
-              borderRadius: 6
-            }]
-          },
-          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-        }));
-
-        // BP Chart
-        const ctxBP = document.getElementById('chart-bp').getContext('2d');
-        _charts.push(new Chart(ctxBP, {
-          type: 'bar',
-          data: {
-            labels: ['Normal (<120)', 'Elevated (120-129)', 'Stage 1 (130-139)', 'Stage 2 (≥140)'],
-            datasets: [{
-              label: 'Patients',
-              data: [data.bp_dist.normal, data.bp_dist.elevated, data.bp_dist.stage1, data.bp_dist.stage2],
-              backgroundColor: ['#4ade80', '#fbbf24', '#f87171', '#ef4444'],
-              borderRadius: 6
-            }]
-          },
-          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-        }));
-
-        // Overlap Chart
-        const ctxOL = document.getElementById('chart-overlap').getContext('2d');
-        _charts.push(new Chart(ctxOL, {
-          type: 'doughnut',
-          data: {
-            labels: ['Both (Comorbid)', 'Hypertension Only', 'Diabetes Only', 'Neither'],
-            datasets: [{
-              data: [data.risk_overlap.both, data.risk_overlap.bp_only, data.risk_overlap.bs_only, data.risk_overlap.neither],
-              backgroundColor: ['#a78bfa', '#fbbf24', '#60a5fa', '#334d66'],
-              borderWidth: 0,
-              hoverOffset: 4
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '65%',
-            plugins: {
-              legend: { position: 'right' }
-            }
-          }
-        }));
-
+        _renderCharts(data);
       } catch (e) {
-        el.innerHTML = `<div class="empty"><p>Failed to load analytics: ${e.message}</p></div>`;
+        // Charts failed but stat cards already visible — just log
+        console.error('[CareGap] Full stats failed:', e.message);
       }
     }
 

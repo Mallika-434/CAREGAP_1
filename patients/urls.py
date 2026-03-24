@@ -3,6 +3,7 @@ from . import views
 
 urlpatterns = [
     path('search/',                        views.patient_search,        name='patient-search'),
+    path('stats/basic/',                   views.dashboard_stats_basic, name='dashboard-stats-basic'),
     path('stats/',                         views.dashboard_stats,       name='dashboard-stats'),
     path('triage/',                        views.triage_list,           name='triage-list'),
     path('<str:patient_id>/',              views.patient_detail,        name='patient-detail'),

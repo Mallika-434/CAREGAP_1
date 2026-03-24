@@ -24,6 +24,7 @@ data/
 cache/
 check.txt
 uc_test.txt
+rag/faiss_index/
 
 # Ignore zip files
 *.zip

@@ -75,14 +75,30 @@ REST_FRAMEWORK = {
 
 CORS_ALLOW_ALL_ORIGINS = True
 
-# ── Synthea CSV paths ──────────────────────────────────────────────
-# Point these to your Synthea output folder
-SYNTHEA_DATA_DIR = r'C:\Users\malli\OneDrive\Desktop\MRP NEW\caregap-main\data\synthea_ca_seed43438_p30000'
+# ── File-based cache (makes triage 5-min cache actually work) ──────
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': BASE_DIR / 'cache',
+        'TIMEOUT': 300,
+        'OPTIONS': {'MAX_ENTRIES': 200},
+    }
+}
 
-# ── Ollama / LLaMA settings ────────────────────────────────────────
+# ── Synthea CSV data directory ─────────────────────────────────────
+# Override by setting SYNTHEA_DATA_DIR env var, otherwise defaults
+# to the relative path data/synthea_ca_seed43438_p30000/
+SYNTHEA_DATA_DIR = os.environ.get(
+    'SYNTHEA_DATA_DIR',
+    str(BASE_DIR / 'data' / 'synthea_ca_seed43438_p30000'),
+)
+
+# ── HuggingFace Inference API ──────────────────────────────────────
+HF_API_TOKEN = os.environ.get('HF_API_TOKEN', '')
+
+# ── Ollama / LLaMA settings (legacy — superseded by HF API) ───────
 OLLAMA_BASE_URL = 'http://localhost:11434'
-OLLAMA_MODEL    = 'llama3'          # change to your pulled model name
-                                    # e.g. 'llama3.2', 'mistral', 'phi3'
+OLLAMA_MODEL    = 'llama3'
 
 # ── FAISS vector index path ────────────────────────────────────────
 FAISS_INDEX_PATH = BASE_DIR / 'rag' / 'faiss_index'

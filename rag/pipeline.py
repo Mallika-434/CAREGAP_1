@@ -32,8 +32,8 @@ try:
     FAISS_AVAILABLE = True
 except ImportError:
     FAISS_AVAILABLE = False
-    logger.warning(
-        "faiss-cpu or sentence-transformers not installed. "
+    logger.debug(
+        "faiss-cpu or sentence-transformers not installed — RAG index disabled. "
         "Install with: pip install faiss-cpu sentence-transformers"
     )
 
@@ -287,21 +287,25 @@ class RAGPipeline:
         # Step 3: Build prompt
         prompt = _build_prompt(patient_profile, context)
 
-        # Step 4: Call Ollama
-        try:
-            suggestions_text = _call_ollama(prompt)
-        except Exception as e:
-            suggestions_text = (
-                f"Could not reach Ollama at {settings.OLLAMA_BASE_URL}. "
-                f"Make sure Ollama is running and the model '{settings.OLLAMA_MODEL}' is pulled.\n"
-                f"Error: {str(e)}"
-            )
+        # Step 4: Call HuggingFace Inference API; fall back to rule-based
+        hf_token = getattr(settings, 'HF_API_TOKEN', '')
+        if hf_token:
+            try:
+                suggestions_text = _call_huggingface(prompt, hf_token)
+                model_used = 'mistralai/Mistral-7B-Instruct-v0.2'
+            except Exception as e:
+                logger.warning("HF API call failed (%s) — using rule-based fallback", e)
+                suggestions_text = _rule_based_suggestions(patient_profile)
+                model_used = 'rule-based-fallback'
+        else:
+            suggestions_text = _rule_based_suggestions(patient_profile)
+            model_used = 'rule-based-fallback'
 
         return {
-            'query':       query,
+            'query':        query,
             'context_used': [c.get('id') for c in chunks],
-            'suggestions': suggestions_text,
-            'model':       settings.OLLAMA_MODEL,
+            'suggestions':  suggestions_text,
+            'model':        model_used,
         }
 
 
@@ -349,22 +353,98 @@ Focus on diet, exercise, sleep, stress management, and monitoring habits.
 """
 
 
-def _call_ollama(prompt: str) -> str:
-    """Send prompt to Ollama REST API and return the generated text."""
-    url  = f"{settings.OLLAMA_BASE_URL}/api/generate"
+def _call_huggingface(prompt: str, token: str) -> str:
+    """Send prompt to HuggingFace Inference API (Mistral-7B) and return generated text."""
+    url     = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2"
+    headers = {"Authorization": f"Bearer {token}"}
     payload = {
-        "model":  settings.OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature": 0.7,
-            "top_p": 0.9,
-            "num_predict": 600,
-        }
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 600,
+            "temperature":    0.7,
+            "top_p":          0.9,
+            "return_full_text": False,
+        },
     }
-    response = requests.post(url, json=payload, timeout=120)
+    response = requests.post(url, headers=headers, json=payload, timeout=60)
     response.raise_for_status()
-    return response.json().get('response', '').strip()
+    data = response.json()
+    if isinstance(data, list) and data:
+        return data[0].get('generated_text', '').strip()
+    return str(data).strip()
+
+
+def _rule_based_suggestions(profile: dict) -> str:
+    """
+    Deterministic, evidence-based suggestions when no LLM is available.
+    Returns a formatted string of 4–5 bullet recommendations.
+    """
+    has_dm  = profile.get('has_diabetes',     False)
+    has_htn = profile.get('has_hypertension', False)
+    hba1c   = profile.get('hba1c_value')
+    sbp     = profile.get('latest_sbp')
+    age     = profile.get('age', 0) or 0
+
+    bullets: list[str] = []
+
+    # ── Glycemic control ──────────────────────────────────────────
+    if has_dm:
+        if hba1c and hba1c >= 9.0:
+            bullets.append(
+                "**Urgent Glycemic Review** — Your HbA1c is critically elevated "
+                f"({hba1c}%). Contact your care team this week to review medications "
+                "and consider a diabetes care specialist referral."
+            )
+        elif hba1c and hba1c >= 6.5:
+            bullets.append(
+                "**Low-Glycemic Diet** — Prioritize non-starchy vegetables, whole grains, "
+                "and lean proteins. Limit refined carbohydrates, sugary beverages, and "
+                "processed foods. Consistent meal timing helps stabilize blood glucose."
+            )
+        bullets.append(
+            "**Regular Physical Activity** — Aim for at least 150 minutes per week of "
+            "moderate aerobic exercise (brisk walking, cycling, swimming). "
+            "Break up sitting time every 30 minutes to improve insulin sensitivity."
+        )
+
+    # ── Blood pressure control ────────────────────────────────────
+    if has_htn:
+        if sbp and sbp >= 160:
+            bullets.append(
+                "**Immediate BP Follow-Up Needed** — Your systolic blood pressure is "
+                f"{sbp} mmHg, which is Stage 2 hypertension. Please schedule a clinic "
+                "visit within the next week and reduce sodium intake immediately."
+            )
+        bullets.append(
+            "**DASH Diet** — Follow the Dietary Approaches to Stop Hypertension diet: "
+            "emphasize fruits, vegetables, whole grains, and low-fat dairy. "
+            "Limit sodium to under 1,500–2,300 mg/day by reducing processed foods."
+        )
+
+    # ── Sleep ─────────────────────────────────────────────────────
+    bullets.append(
+        "**Quality Sleep** — Aim for 7–9 hours of restful sleep each night. "
+        "Poor sleep raises cortisol and blood glucose. "
+        + ("Screen for sleep apnea, which is more common with diabetes and obesity." if has_dm
+           else "Consistent sleep schedules support cardiovascular health.")
+    )
+
+    # ── Stress management ─────────────────────────────────────────
+    bullets.append(
+        "**Stress Management** — Chronic stress raises both blood glucose and blood pressure. "
+        "Practice mindfulness, deep breathing, or gentle yoga for 10–15 minutes daily. "
+        "Social support from family and peer groups also improves chronic disease outcomes."
+    )
+
+    # ── Age-specific monitoring ───────────────────────────────────
+    if age >= 65:
+        bullets.append(
+            "**Fall & Balance Safety** — At your age, maintaining muscle strength through "
+            "light resistance training (chair squats, resistance bands) reduces fall risk. "
+            "Review all medications with your provider for interactions that affect balance."
+        )
+
+    return "\n\n".join(f"• {b}" for b in bullets)
 
 
 # Singleton instance

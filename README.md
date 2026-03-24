@@ -147,7 +147,8 @@ Open: http://localhost:8000
 | Method | URL | Description |
 |--------|-----|-------------|
 | GET | /api/patients/search/ | Patient search with cohort filter |
-| GET | /api/patients/stats/ | Population analytics |
+| GET | /api/patients/stats/basic/ | Fast stat cards (instant, cached) |
+| GET | /api/patients/stats/ | Full population analytics (charts) |
 | GET | /api/patients/triage/ | High risk triage list |
 | GET | /api/patients/\<id\>/ | Full patient profile |
 | GET | /api/patients/\<id\>/risk/ | Risk assessment |
