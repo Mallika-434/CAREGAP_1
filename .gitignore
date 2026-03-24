@@ -24,3 +24,6 @@ data/
 cache/
 check.txt
 uc_test.txt
+
+# Ignore zip files
+*.zip
