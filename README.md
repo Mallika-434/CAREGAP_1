@@ -1,5 +1,17 @@
 # CareGap Analytics — Patient Risk Management System
 ### AA-5960-02 Masters Research Project · Group 5 · Saint Louis University
+### Asmi Basnet | Mallika Chand | Mandapalli Jagadeeshwari
+### Instructor: Dr. Srikanth Mudigonda
+
+---
+
+## Project Overview
+
+CareGap is a full-stack healthcare analytics dashboard built
+for nurse case managers managing patients with hypertension
+and Type 2 diabetes. It uses synthetic EHR data from Synthea
+(California, 30,000 patients) to identify care gaps, calculate
+risk scores, and surface actionable clinical insights.
 
 ---
 
@@ -8,80 +20,125 @@
 ```
 caregap/
 ├── caregap/               # Django project config
-│   ├── settings.py        # ← Set SYNTHEA_DATA_DIR and OLLAMA_MODEL here
+│   ├── settings.py        # Set SYNTHEA_DATA_DIR here
 │   ├── urls.py
 │   └── wsgi.py
 ├── patients/              # Core patient app
-│   ├── models.py          # Patient, Observation, Encounter, Condition, UrgentCare
-│   ├── risk_engine.py     # ← Risk scoring: EMERGENCY / HIGH / MODERATE / PREVENTIVE / NORMAL
-│   ├── urgent_care_matcher.py  # ← Geometric distance + Insurance matching
-│   ├── views.py           # REST API endpoints (Stats, Search, Profile, Triage)
+│   ├── models.py          # Patient, Observation, Encounter,
+│   │                      # Condition, Medication, Organization
+│   ├── risk_engine.py     # Risk scoring: CRITICAL/WARNING/STABLE
+│   ├── urgent_care_matcher.py  # Clinic matching logic
+│   ├── views.py           # REST API endpoints
 │   ├── serializers.py
 │   ├── urls.py
 │   └── management/commands/
-│       ├── import_synthea.py   # ← CSV → SQLite importer
-│       ├── mark_deceased.py    # ← Flags patients with >5yr inactivity
-│       └── build_rag_index.py
+│       ├── import_synthea.py   # CSV → SQLite importer
+│       ├── mark_deceased.py    # Flags inactive patients
+│       └── build_rag_index.py  # FAISS index builder
 ├── rag/
-│   └── pipeline.py        # ← RAG logic (Currently disabled per requirements)
+│   └── pipeline.py        # RAG logic (FAISS + HF Inference API)
 ├── templates/
-│   └── dashboard.html     # ← Full SPA frontend (Charts, Action Required, Trends)
+│   └── dashboard.html     # Full SPA frontend
 ├── requirements.txt
 └── manage.py
 ```
 
 ---
 
-## Setup (Step-by-Step)
+## Patient Cohorts
 
-### 1. Install Python dependencies
+The system imports all 33,990 Synthea patients split into
+4 cohorts:
+
+| Cohort | Description | Count |
+|--------|-------------|-------|
+| chronic | Adults 18-110 with HTN or T2D | ~6,267 |
+| at_risk | Adults 18-110 without chronic disease | ~16,776 |
+| pediatric | Patients under 18 | ~6,957 |
+| deceased | Patients with death date | ~3,990 |
+
+---
+
+## Risk Tier Logic
+
+| Tier | Score | Action |
+|------|-------|--------|
+| CRITICAL | ≥ 60 | Immediate outreach required |
+| WARNING | 30-59 | Schedule follow-up within 2 weeks |
+| STABLE | < 30 | Routine monitoring |
+
+---
+
+## Care Gap Rules
+
+| Care Gap | Rule |
+|----------|------|
+| HbA1c Overdue | No HbA1c test in > 365 days |
+| BP Follow-up Missing | SBP ≥ 160 with no encounter in 30 days |
+| Missing Medication | No active medication on record |
+
+---
+
+## Setup Instructions
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/Mallika-434/CAREGAP_1.git
+cd CAREGAP_1
+```
+
+### 2. Create virtual environment
+```bash
+python -m venv venv
+venv\Scripts\activate   # Windows
+source venv/bin/activate  # Mac/Linux
+```
+
+### 3. Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Point to your Synthea CSV files
-Edit `caregap/settings.py`:
-```python
-SYNTHEA_DATA_DIR = '/path/to/your/synthea/output/csv'
-# Files needed: patients.csv, observations.csv, encounters.csv,
-#               conditions.csv, payers.csv, payer_transitions.csv
+### 4. Add Synthea CSV files
+Download the Synthea California dataset and place in:
+```
+data/synthea_ca_seed43438_p30000/
 ```
 
-### 3. Set up the database
+Files needed:
+- patients.csv
+- conditions.csv
+- observations.csv
+- encounters.csv
+- medications.csv
+- organizations.csv
+- payers.csv
+- payer_transitions.csv
+
+### 5. Update settings.py
+Edit `caregap/settings.py`:
+```python
+SYNTHEA_DATA_DIR = 'data/synthea_ca_seed43438_p30000'
+```
+
+### 6. Run migrations
 ```bash
 python manage.py migrate
 ```
 
-### 4. Import Synthea data
+### 7. Import all 33,990 patients
 ```bash
-python manage.py import_synthea
-# Optional: --data-dir /custom/path   --clear (to wipe and re-import)
+python manage.py import_synthea --clear
 ```
 
-### 5. Build the RAG FAISS index
-```bash
-python manage.py build_rag_index
-# Downloads 'all-MiniLM-L6-v2' model on first run (~80 MB)
-```
+> This will take 45–90 minutes for the full dataset.
 
-### 6. Set up Ollama with LLaMA
-```bash
-# Install Ollama: https://ollama.ai
-ollama pull llama3          # or: llama3.2, mistral, phi3
-ollama serve                # Keep this running in a separate terminal
-```
-
-Change model in `settings.py` if using a different one:
-```python
-OLLAMA_MODEL = 'llama3'     # match your pulled model name exactly
-```
-
-### 7. Run the server
+### 8. Run the server
 ```bash
 python manage.py runserver
 ```
 
-Open: **http://localhost:8000**
+Open: http://localhost:8000
 
 ---
 
@@ -89,58 +146,43 @@ Open: **http://localhost:8000**
 
 | Method | URL | Description |
 |--------|-----|-------------|
-| GET | `/api/patients/search/?q=<name>` | Fuzzy patient search |
-| GET | `/api/patients/stats/` | Demographic and Population Risk analytics |
-| GET | `/api/patients/triage/` | Generates EMERGENCY and HIGH risk triage lists |
-| GET | `/api/patients/<id>/` | Full longitudinal patient profile and history |
-| GET | `/api/patients/<id>/risk/` | Real-time risk tier computation + reasons |
-| GET | `/api/patients/<id>/urgent-care/` | Nearby urgent cares geometrically matched |
+| GET | /api/patients/search/ | Patient search with cohort filter |
+| GET | /api/patients/stats/ | Population analytics |
+| GET | /api/patients/triage/ | High risk triage list |
+| GET | /api/patients/\<id\>/ | Full patient profile |
+| GET | /api/patients/\<id\>/risk/ | Risk assessment |
+| GET | /api/patients/\<id\>/urgent-care/ | Clinic recommendations |
 
 ---
 
-## Risk Tier Logic (`risk_engine.py`)
+## Dashboard Pages
 
-| Tier | Score | Trigger Conditions | Action |
-|------|-------|--------------------|--------|
-| **EMERGENCY**| ≥ 80 | SBP ≥ 160 mmHg, OR HbA1c ≥ 9.0%, OR high composite score | Dispatch to ER automatically immediately |
-| **HIGH** | 60–79 | Elevated risk score | Match to Urgent Care (within 24-48 hours) |
-| **MODERATE** | 30–59 | HbA1c approaching overdue, OR SBP ≥ 140, OR borderline HbA1c | Schedule Follow-up (within 30 days) |
-| **PREVENTIVE** | 10–29 | At-risk demographics, mild vitals concern | Preventive guidance (within 90 days) |
-| **NORMAL** | < 10 | No current care gaps detected | Routine Monitoring |
+1. **Analytics Explorer** — Population filtering & predictive insights
+2. **Population Dashboard** — Population-level charts and metrics
+3. **Patient Search** — Searchable directory of all 30,000 patients
+4. **Action Required** — Emergency and urgent care triage queue
 
 ---
 
-## Workflow Per Patient
+## Dataset
 
-```
-Search patient by name
-        ↓
-Risk Assessment (automatic)
-        ↓
-    ┌───┴────────────────────────────┐
-   HIGH                         MODERATE
-    ↓                               ↓
-Find urgent cares              Schedule follow-up
-matched by insurance           visit recommendation
-+ city proximity
-        ↓ (any tier)
-RAG Habit Suggestions
-via LLaMA (Ollama)
-FAISS retrieves relevant
-clinical guidelines → 
-personalized recommendations
-```
+Synthea California synthetic dataset:
+- Seed: 43438
+- Total patients: 33,990
+- Source: https://github.com/synthetichealth/synthea
+- Note: Dataset not included in repo due to size (~5 GB compressed).
+  Contact the team for access or generate using Synthea.
 
 ---
 
-## Extending the Knowledge Base
+## Tech Stack
 
-Add to `rag/pipeline.py` → `KNOWLEDGE_BASE` list:
-```python
-{
-    "id": "dm_new_guideline",
-    "condition": "diabetes",   # or "hypertension" or "preventive"
-    "text": "Your clinical guideline text here..."
-},
-```
-Then rebuild: `python manage.py build_rag_index`
+| Layer | Technology |
+|-------|-----------|
+| Backend | Python 3.14 + Django 6.0 + Django REST Framework |
+| Frontend | Vanilla JS SPA + Chart.js |
+| Database | SQLite (development) |
+| Caching | Django file-based cache |
+| RAG | FAISS + HF Inference API (Mistral-7B) |
+| Predictions | scikit-learn + pandas |
+| Deployment | Hugging Face Spaces + Docker |
