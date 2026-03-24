@@ -79,7 +79,7 @@ CORS_ALLOW_ALL_ORIGINS = True
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
-        'LOCATION': BASE_DIR / 'cache',
+        'LOCATION': str(BASE_DIR / 'cache'),
         'TIMEOUT': 300,
         'OPTIONS': {'MAX_ENTRIES': 200},
     }

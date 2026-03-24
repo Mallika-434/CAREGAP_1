@@ -1975,8 +1975,22 @@
       }
 
       // ── Phase 2: full stats — charts + care gaps (runs in background) ──
+      await loadCharts();
+    }
+
+    async function loadCharts() {
+      const el = document.getElementById('dashboard-stats-content');
+      // Preserve stat cards if already rendered; replace only the chart area
+      const hasCards = el.querySelector('[data-stat-cards]');
+
+      // 25-second timeout — on cold cache this may take 5–30 s;
+      // after warm_cache it returns from cache in < 1 s.
+      const ctrl    = new AbortController();
+      const timerId = setTimeout(() => ctrl.abort(), 25000);
+
       try {
-        const res  = await fetch('/api/patients/stats/');
+        const res  = await fetch('/api/patients/stats/', { signal: ctrl.signal });
+        clearTimeout(timerId);
         const data = await res.json();
 
         el.innerHTML = _statCardsHtml(data) + `
@@ -1997,8 +2011,26 @@
 
         _renderCharts(data);
       } catch (e) {
-        // Charts failed but stat cards already visible — just log
-        console.error('[CareGap] Full stats failed:', e.message);
+        clearTimeout(timerId);
+        const isTimeout = e.name === 'AbortError';
+        const msg = isTimeout
+          ? 'Taking longer than expected (first load can be slow).'
+          : `Charts failed to load: ${e.message}`;
+        // Stat cards stay; replace only the chart spinners with retry link
+        const chartArea = el.querySelector('[data-chart-area]');
+        const retryTarget = chartArea || el;
+        retryTarget.innerHTML = `
+          <div class="panel" style="padding:32px;text-align:center;color:var(--text3)">
+            <div style="margin-bottom:10px">${msg}</div>
+            <a href="#" onclick="event.preventDefault();loadCharts()"
+               style="color:var(--accent);font-weight:600;text-decoration:none">
+              ↻ Retry charts
+            </a>
+            <div style="font-size:.75rem;margin-top:8px;color:var(--text3)">
+              Tip: run <code>python manage.py warm_cache</code> to pre-compute and cache results.
+            </div>
+          </div>`;
+        console.error('[CareGap] Full stats:', e.message);
       }
     }
 
