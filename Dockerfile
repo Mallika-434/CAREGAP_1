@@ -28,8 +28,16 @@ COPY --chown=user:user . .
 # Collect static assets for WhiteNoise to serve
 RUN python manage.py collectstatic --no-input
 
+# Copy SQLite DB to /tmp so the non-root user can write to it at runtime
+RUN cp /app/db.sqlite3 /tmp/db.sqlite3 && chmod 666 /tmp/db.sqlite3
+
 # Create writable cache dir before switching to non-root user
 RUN mkdir -p /tmp/caregap_cache && chmod 777 /tmp/caregap_cache
+
+# Environment variables for HF Spaces runtime
+ENV DB_PATH=/tmp/db.sqlite3
+ENV SECRET_KEY=caregap-hf-spaces-demo-key-2024
+ENV DEBUG=False
 
 # Switch to non-root user
 USER user

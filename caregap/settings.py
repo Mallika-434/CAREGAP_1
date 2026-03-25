@@ -61,7 +61,7 @@ WSGI_APPLICATION = 'caregap.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': os.environ.get('DB_PATH', str(BASE_DIR / 'db.sqlite3')),
     }
 }
 
