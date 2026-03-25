@@ -91,11 +91,13 @@ REST_FRAMEWORK = {
 
 CORS_ALLOW_ALL_ORIGINS = True
 
-# ── File-based cache (makes triage 5-min cache actually work) ──────
+# ── File-based cache ───────────────────────────────────────────────
+# /tmp/caregap_cache is world-writable and works for both local dev
+# and HF Spaces (non-root uid=1000 cannot write to /app/cache).
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
-        'LOCATION': str(BASE_DIR / 'cache'),
+        'LOCATION': '/tmp/caregap_cache',
         'TIMEOUT': 300,
         'OPTIONS': {'MAX_ENTRIES': 200},
     }

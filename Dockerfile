@@ -28,6 +28,9 @@ COPY --chown=user:user . .
 # Collect static assets for WhiteNoise to serve
 RUN python manage.py collectstatic --no-input
 
+# Create writable cache dir before switching to non-root user
+RUN mkdir -p /tmp/caregap_cache && chmod 777 /tmp/caregap_cache
+
 # Switch to non-root user
 USER user
 
