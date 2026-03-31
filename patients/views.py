@@ -958,3 +958,21 @@ def _age(birthdate):
     today = date.today()
     bd = birthdate if hasattr(birthdate, 'year') else birthdate
     return today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+
+
+# ── Resource Forecast ──────────────────────────────────────────────
+@api_view(['GET'])
+def resource_forecast(request):
+    from django.core.cache import cache
+    from datetime import datetime
+    from .forecaster import forecast_resources
+
+    triage = cache.get('triage_list')
+    if triage:
+        high_risk_volume = len(triage.get('emergency_patients', []))
+    else:
+        high_risk_volume = Patient.objects.filter(cohort='chronic').count() // 10
+
+    forecast = forecast_resources(high_risk_volume)
+    forecast['generated_at'] = datetime.now().isoformat()
+    return Response(forecast)

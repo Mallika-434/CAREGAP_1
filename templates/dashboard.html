@@ -28,6 +28,32 @@
       --purple: #a78bfa;
     }
 
+    /* ── Light theme ────────────────────────────────────────────── */
+    body.light-theme .topbar {
+      background: rgba(255, 255, 255, .92);
+      color: var(--text);
+    }
+    body.light-theme .topbar-title {
+      color: var(--text);
+    }
+    body.light-theme {
+      --bg: #f0f4f8;
+      --bg2: #ffffff;
+      --bg3: #e8f0f8;
+      --surface: #ffffff;
+      --border: #cbd5e1;
+      --border2: #94a3b8;
+      --text: #0f172a;
+      --text2: #334155;
+      --text3: #64748b;
+      --accent: #0d9488;
+      --red: #dc2626;
+      --amber: #d97706;
+      --green: #16a34a;
+      --blue: #2563eb;
+      --purple: #7c3aed;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -144,11 +170,12 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: rgba(13, 17, 23, .9);
+      background: color-mix(in srgb, var(--bg2) 90%, transparent);
       backdrop-filter: blur(12px);
       position: sticky;
       top: 0;
       z-index: 50;
+      color: var(--text);
     }
 
     .topbar-title {
@@ -1181,6 +1208,15 @@
       🚨 Action Required
     </div>
     <div class="sfooter">
+      <button id="theme-toggle" onclick="toggleTheme()"
+              style="display:flex;align-items:center;gap:8px;width:100%;
+                     background:var(--bg3);border:1px solid var(--border);
+                     border-radius:8px;padding:8px 12px;cursor:pointer;
+                     color:var(--text2);font-family:inherit;font-size:.8rem;
+                     margin-bottom:14px;transition:background .15s">
+        <span id="theme-icon">☀️</span>
+        <span id="theme-label">Light Mode</span>
+      </button>
       <div>Group 5 · MRP4 · <span>AA-5960-02</span></div>
       <div style="margin-top:3px">Saint Louis University</div>
       <div style="margin-top:3px;font-size:.7rem">Instructor: <span>Dr. Srikanth Mudigonda</span></div>
@@ -1401,6 +1437,19 @@
           </div>
         </div>
 
+        <!-- ── 30-Day Resource Forecast ─────────────────────────── -->
+        <div class="panel" style="margin-top:24px;border-top:2px solid var(--blue)">
+          <div class="panel-h">
+            <div>
+              <h3 style="color:var(--blue)">30-Day Resource Forecast</h3>
+              <p>Based on current high-risk patient volume</p>
+            </div>
+          </div>
+          <div id="forecast-content" style="padding:10px 18px">
+            <div class="empty"><div class="spin"></div></div>
+          </div>
+        </div>
+
       </div>
 
       <!-- ═══ SECTION: ANALYTICS EXPLORER ═══ -->
@@ -1560,6 +1609,19 @@
   </main>
 
   <script>
+    // ─── Theme ───────────────────────────────────────────────────────
+    function applyTheme(theme) {
+      const isLight = theme === 'light';
+      document.body.classList.toggle('light-theme', isLight);
+      document.getElementById('theme-icon').textContent  = isLight ? '🌙' : '☀️';
+      document.getElementById('theme-label').textContent = isLight ? 'Dark Mode' : 'Light Mode';
+    }
+    function toggleTheme() {
+      const next = document.body.classList.contains('light-theme') ? 'dark' : 'light';
+      localStorage.setItem('theme', next);
+      applyTheme(next);
+    }
+
     // ─── State ───
     let currentPatientId = null;
     // ─── Infinite-scroll directory state ───
@@ -1593,6 +1655,7 @@
     };
     // ─── DOM Ready ───
     document.addEventListener('DOMContentLoaded', () => {
+      applyTheme(localStorage.getItem('theme') || 'dark');
       const searchNav = document.querySelector('.nav-item[onclick*="search"]');
       showSection('search', searchNav);
       loadAllPatients();
@@ -1606,7 +1669,7 @@
       if (el) el.classList.add('active');
 
       if (id === 'dashboard') loadDashboardStats();
-      if (id === 'triage') loadTriage();
+      if (id === 'triage') { loadTriage(); loadForecast(); }
     }
 
     function showTab(id, el) {
@@ -2301,6 +2364,42 @@
     function getCookie(name) {
       const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
       return v ? v.pop() : '';
+    }
+
+    // ─── Resource Forecast ───────────────────────────────────────────
+    async function loadForecast() {
+      const box = document.getElementById('forecast-content');
+      box.innerHTML = `<div class="empty"><div class="spin"></div></div>`;
+      try {
+        const res = await fetch('/api/patients/resources/forecast/');
+        const d   = await res.json();
+        const r   = d.resources || {};
+        box.innerHTML = `
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:6px 0 14px">
+            <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:18px;text-align:center">
+              <div style="font-size:2rem;font-weight:700;color:var(--blue)">${r.beds?.count ?? '—'}</div>
+              <div style="font-size:.8rem;font-weight:600;color:var(--text);margin:4px 0 2px">${r.beds?.label ?? 'General Beds'}</div>
+              <div style="font-size:.74rem;color:var(--text3)">${r.beds?.description ?? ''}</div>
+            </div>
+            <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:18px;text-align:center">
+              <div style="font-size:2rem;font-weight:700;color:var(--red)">${r.icu?.count ?? '—'}</div>
+              <div style="font-size:.8rem;font-weight:600;color:var(--text);margin:4px 0 2px">${r.icu?.label ?? 'ICU Rooms'}</div>
+              <div style="font-size:.74rem;color:var(--text3)">${r.icu?.description ?? ''}</div>
+            </div>
+            <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:18px;text-align:center">
+              <div style="font-size:2rem;font-weight:700;color:var(--green)">${r.nurses?.count ?? '—'}</div>
+              <div style="font-size:.8rem;font-weight:600;color:var(--text);margin:4px 0 2px">${r.nurses?.label ?? 'Nurses'}</div>
+              <div style="font-size:.74rem;color:var(--text3)">${r.nurses?.description ?? ''}</div>
+            </div>
+          </div>
+          <div style="font-size:.78rem;color:var(--text3);padding-bottom:6px">
+            Based on <strong style="color:var(--text)">${d.high_risk_volume}</strong> high-risk patients
+            &nbsp;·&nbsp; ${d.period_days}-day window
+            &nbsp;·&nbsp; Generated ${new Date(d.generated_at).toLocaleTimeString()}
+          </div>`;
+      } catch (e) {
+        box.innerHTML = `<div class="empty"><p style="color:var(--text3)">Could not load forecast.</p></div>`;
+      }
     }
 
     // ─── Action Required / Triage Queue ───
