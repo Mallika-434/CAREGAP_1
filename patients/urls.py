@@ -11,4 +11,5 @@ urlpatterns = [
     path('<str:patient_id>/risk/',         views.patient_risk,          name='patient-risk'),
     path('<str:patient_id>/urgent-care/',  views.patient_urgent_cares,  name='patient-urgent-care'),
     path('<str:patient_id>/predict/',      views.patient_predict,       name='patient-predict'),
+    path('resources/forecast/',            views.resource_forecast,     name='resource-forecast'),
 ]
