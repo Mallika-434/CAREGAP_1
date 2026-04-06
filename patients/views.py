@@ -855,12 +855,28 @@ def patient_predict(request, patient_id):
 
 
 # ── 8. Triage Dashboard (Emergency / Urgent Care) ─────────────────
+# Source: ACC/AHA 2023 Hypertension Guidelines
+# Source: ADA Standards of Medical Care 2024
+# Source: JNC 8 Guidelines
 @api_view(['GET'])
 def triage_list(request):
     """
     Fast triage using pure DB queries — no assess_risk() loops.
-    CRITICAL: latest SBP ≥ 160 OR latest HbA1c ≥ 9.0
-    HIGH:     active HTN/T2D condition AND no HbA1c in past 365 days
+
+    EMERGENCY (immediate outreach):
+      - SBP >= 160 mmHg          [ACC/AHA 2023: Stage 2 Hypertension]
+      - OR HbA1c >= 10%          [ADA 2024: very poorly controlled diabetes]
+      - OR HbA1c >= 9% with no encounter in last 30 days
+                                 [ADA 2024: poorly controlled, no recent follow-up]
+
+    URGENT (same-day or next-day visit):
+      - SBP 140–159 mmHg         [JNC 8: Stage 1 requiring medication]
+      - OR HbA1c 7.0–9.9%        [ADA 2024: above goal for most adults]
+      - OR HbA1c overdue (no test in 365 days) with active HTN/diabetes dx
+                                 [ADA 2024: annual HbA1c for stable patients]
+      - OR SBP >= 130 with no encounter in last 90 days
+                                 [ACC/AHA 2023: elevated BP requiring follow-up]
+
     Result cached 5 minutes.
     """
     from django.core.cache import cache
@@ -869,7 +885,10 @@ def triage_list(request):
     if cached is not None:
         return Response(cached)
 
-    one_year_ago = timezone.now() - timedelta(days=365)
+    now          = timezone.now()
+    one_year_ago = now - timedelta(days=365)
+    ninety_ago   = now - timedelta(days=90)
+    thirty_ago   = now - timedelta(days=30)
 
     # ── Build latest-value maps for SBP and HbA1c ─────────────────
     # Iterate observations descending; first occurrence per patient = latest.
@@ -894,37 +913,102 @@ def triage_list(request):
             try: hba1c_map[pid] = float(val)
             except (ValueError, TypeError): pass
 
-    # ── CRITICAL: SBP ≥ 160 OR HbA1c ≥ 9.0 ──────────────────────
+    # ── Latest encounter date map ──────────────────────────────────
+    encounter_map: dict[str, object] = {}
+    for pid, start in (Encounter.objects
+                       .filter(patient__is_deceased=False)
+                       .order_by('-start')
+                       .values_list('patient__patient_id', 'start')
+                       .iterator(chunk_size=5000)):
+        if pid not in encounter_map:
+            encounter_map[pid] = start
+
+    # ── EMERGENCY: immediate outreach ─────────────────────────────
     critical_pids = set()
+
+    # ACC/AHA 2023: Stage 2 Hypertension — SBP >= 160 mmHg
     for pid, sbp in sbp_map.items():
         if sbp >= 160:
             critical_pids.add(pid)
+
+    # ADA 2024: very poorly controlled diabetes — HbA1c >= 10%
     for pid, hba1c in hba1c_map.items():
-        if hba1c >= 9.0:
+        if hba1c >= 10.0:
             critical_pids.add(pid)
 
-    # ── HIGH: active HTN/T2D AND HbA1c overdue ───────────────────
-    flagged_pids = set(
+    # ADA 2024: poorly controlled (HbA1c >= 9%) with no encounter in last 30 days
+    for pid, hba1c in hba1c_map.items():
+        if hba1c >= 9.0:
+            last_enc = encounter_map.get(pid)
+            if last_enc is None or (
+                hasattr(last_enc, 'date') and last_enc < thirty_ago.date()
+            ) or (
+                hasattr(last_enc, 'year') and not hasattr(last_enc, 'date')
+                and last_enc < thirty_ago
+            ):
+                critical_pids.add(pid)
+
+    # ── URGENT: same-day or next-day visit ────────────────────────
+    # Collect chronic patient IDs (all conditions below restricted to chronic)
+    chronic_pids = set(
+        Patient.objects
+        .filter(cohort='chronic', is_deceased=False)
+        .values_list('patient_id', flat=True)
+    )
+
+    urgent_pids: set[str] = set()
+
+    # JNC 8: Stage 1 Hypertension requiring medication — SBP 140–159 mmHg
+    for pid, sbp in sbp_map.items():
+        if 140 <= sbp <= 159 and pid in chronic_pids:
+            urgent_pids.add(pid)
+
+    # ADA 2024: above glycemic goal for most adults — HbA1c 7.0–9.9%
+    for pid, hba1c in hba1c_map.items():
+        if 7.0 <= hba1c <= 9.9 and pid in chronic_pids:
+            urgent_pids.add(pid)
+
+    # ADA 2024: HbA1c overdue (no test in 365 days) with active HTN/diabetes dx
+    active_dx_pids = set(
         Condition.objects
         .filter(
             patient__is_deceased=False,
+            patient__cohort='chronic',
             stop__isnull=True,
             code__in=Condition.HYPERTENSION_CODES + Condition.DIABETES_CODES,
         )
-        .exclude(patient__patient_id__in=critical_pids)
         .values_list('patient__patient_id', flat=True)
         .distinct()
     )
     recent_hba1c_pids = set(
         Observation.objects
-        .filter(patient__patient_id__in=flagged_pids,
-                code=Observation.LOINC_HBA1C,
-                date__gte=one_year_ago)
+        .filter(
+            patient__patient_id__in=active_dx_pids,
+            code=Observation.LOINC_HBA1C,
+            date__gte=one_year_ago,
+        )
         .values_list('patient__patient_id', flat=True)
     )
-    high_pids = flagged_pids - recent_hba1c_pids
+    urgent_pids |= (active_dx_pids - recent_hba1c_pids)
 
-    # ── Fetch patient rows for both sets ─────────────────────────
+    # ACC/AHA 2023: elevated BP (SBP >= 130) with no encounter in last 90 days
+    recently_seen_pids = set(
+        Encounter.objects
+        .filter(
+            patient__cohort='chronic',
+            patient__is_deceased=False,
+            start__gte=ninety_ago,
+        )
+        .values_list('patient__patient_id', flat=True)
+    )
+    for pid, sbp in sbp_map.items():
+        if sbp >= 130 and pid in chronic_pids and pid not in recently_seen_pids:
+            urgent_pids.add(pid)
+
+    # Exclude anyone already in emergency
+    urgent_pids -= critical_pids
+
+    # ── Fetch emergency patients ───────────────────────────────────
     def _fetch_patients(pids, tier, limit=50):
         rows = (Patient.objects
                 .filter(patient_id__in=list(pids)[:limit])
@@ -943,8 +1027,38 @@ def triage_list(request):
             })
         return result
 
-    emergency_list = _fetch_patients(critical_pids, 'CRITICAL')
-    urgent_list    = _fetch_patients(high_pids,     'WARNING')
+    # ── Fetch urgent patients ordered by severity ──────────────────
+    def _fetch_urgent(pids, limit=50):
+        """Order: highest SBP -> highest HbA1c -> longest overdue (no encounter)."""
+        rows = (Patient.objects
+                .filter(patient_id__in=list(pids))
+                .values('patient_id', 'first', 'last', 'birthdate', 'city'))
+        result = []
+        for p in rows:
+            pid = p['patient_id']
+            last_enc = encounter_map.get(pid)
+            result.append({
+                'patient_id': pid,
+                'name':  f"{p['first']} {p['last']}",
+                'age':   _age(p['birthdate']),
+                'city':  p['city'],
+                'tier':  'WARNING',
+                'hba1c': hba1c_map.get(pid),
+                'sbp':   sbp_map.get(pid),
+                '_last_enc': last_enc,
+            })
+        # Sort: highest SBP, then highest HbA1c, then longest since last encounter
+        result.sort(key=lambda x: (
+            -(x['sbp']   or 0),
+            -(x['hba1c'] or 0),
+             (x['_last_enc'] or '1900-01-01'),  # earlier date = more overdue = sorted first
+        ))
+        for r in result:
+            r.pop('_last_enc', None)
+        return result[:limit]
+
+    emergency_list = _fetch_patients(critical_pids, 'CRITICAL', limit=10)
+    urgent_list    = _fetch_urgent(urgent_pids, limit=50)
 
     payload = {'emergency_patients': emergency_list, 'urgent_patients': urgent_list}
     cache.set('triage_list', payload, 300)  # 5-minute cache
@@ -969,9 +1083,13 @@ def resource_forecast(request):
 
     triage = cache.get('triage_list')
     if triage:
-        high_risk_volume = len(triage.get('emergency_patients', []))
+        emergency = len(triage.get('emergency_patients', []))
+        urgent    = len(triage.get('urgent_patients', []))
+        high_risk_volume = emergency + urgent
     else:
-        high_risk_volume = Patient.objects.filter(cohort='chronic').count() // 10
+        high_risk_volume = int(Patient.objects.filter(cohort='chronic').count() * 0.10)
+
+    high_risk_volume = max(high_risk_volume, 50)
 
     forecast = forecast_resources(high_risk_volume)
     forecast['generated_at'] = datetime.now().isoformat()
