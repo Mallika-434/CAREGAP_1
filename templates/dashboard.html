@@ -1430,7 +1430,8 @@
               <p>High-risk cohort requiring same-day or next-day clinic visits.</p>
             </div>
           </div>
-          <div id="triage-urgent-content" style="padding: 10px 18px">
+          <div id="triage-urgent-content"
+               style="padding: 10px 18px; max-height: 320px; overflow-y: auto; scroll-behavior: smooth">
             <div class="empty">
               <div class="spin"></div>
             </div>
@@ -1456,7 +1457,7 @@
       <div id="sec-explorer" class="section active">
         <div class="ph" style="margin-bottom:20px">
           <h2>Analytics Explorer</h2>
-          <p>Filter the 33,990-patient population and explore clinical distributions live.</p>
+          <p>Filter the 15,000-patient population and explore clinical distributions live.</p>
         </div>
 
         <!-- ── Tab bar ──────────────────────────────────────────────── -->
@@ -2473,7 +2474,10 @@
                 </tr>
               `).join('')}
             </tbody>
-          </table>`;
+          </table>
+          <div style="text-align:center;padding:8px 0 2px;font-size:.72rem;color:var(--text3)">
+            Showing all urgent care patients &mdash; scroll to view more
+          </div>`;
         }
 
       } catch (e) {

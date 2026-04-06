@@ -3,6 +3,11 @@ CareGap Analytics — Django Settings
 """
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+# Load .env from project root (if present).
+# Variables already set in the environment take precedence.
+load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 

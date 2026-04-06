@@ -1,14 +1,14 @@
 """
 Management command: create_demo_db
 ───────────────────────────────────
-Creates db_demo.sqlite3 with a clinically balanced 15,000-patient sample:
+Creates db_demo.sqlite3 with a clinically balanced 20,000-patient sample:
 
-  chronic   2,763  (≈ 44% of total)
-  at_risk   7,390  (≈ 49% of total)
-  pediatric 3,064  (≈ 20% of total)
-  deceased  1,783  (≈ 26% of total — note: cohorts can overlap in count)
+  chronic   3,684  (≈ 18% of total)
+  at_risk   9,853  (≈ 49% of total)
+  pediatric 4,086  (≈ 20% of total)
+  deceased  2,347  (≈ 12% of total — note: cohorts can overlap in count)
   ─────────────────
-  Total    15,000
+  Total    20,000
 
 All related observations, conditions, medications, and encounters are
 copied for each selected patient. Organizations and urgent-care facilities
@@ -31,10 +31,10 @@ from django.core.management.base import BaseCommand
 # Exact cohort counts that produce 15,000 total with the same ratios
 # as the full 33,990-patient database.
 COHORT_COUNTS = [
-    ('chronic',   2_763),
-    ('at_risk',   7_390),
-    ('pediatric', 3_064),
-    ('deceased',  1_783),
+    ('chronic',   3_684),
+    ('at_risk',   9_853),
+    ('pediatric', 4_086),
+    ('deceased',  2_347),
 ]
 
 
@@ -171,7 +171,7 @@ class Command(BaseCommand):
 
         # ── 4. Copy clinical records ──────────────────────────────────
         self.stdout.write('Copying observations...')
-        copy_patient_table_limited('patients_observation', 'date', max_per_patient=10)
+        copy_patient_table_limited('patients_observation', 'date', max_per_patient=50)
 
         self.stdout.write('Copying conditions...')
         copy_patient_table('patients_condition')          # all conditions
@@ -180,7 +180,7 @@ class Command(BaseCommand):
         copy_patient_table('patients_medication')         # all medications
 
         self.stdout.write('Copying encounters...')
-        copy_patient_table_limited('patients_encounter', 'start', max_per_patient=5)
+        copy_patient_table_limited('patients_encounter', 'start', max_per_patient=20)
 
         # ── 5. Copy lookup tables (not patient-scoped) ────────────────
         self.stdout.write('Copying organizations...')
