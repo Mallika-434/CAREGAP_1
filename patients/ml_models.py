@@ -1,13 +1,16 @@
 """
 patients/ml_models.py
 ─────────────────────
-Feature extraction, trajectory prediction, and model I/O for the
-Predictive Modeling tab.  No Django ORM queries happen here —
+Feature extraction, trajectory prediction, and multi-model ensemble I/O
+for the Predictive Modeling tab.  No Django ORM queries happen here —
 callers pass pre-fetched lists of Patient / Observation / Condition
 objects so this module stays pure-Python and fast.
 
 Models directory: <project_root>/models/
-  risk_predictor.pkl  — scikit-learn Pipeline (StandardScaler + LR)
+  lasso_logistic_regression.pkl  — L1-regularised Logistic Regression
+  random_forest.pkl              — Random Forest Classifier
+  xgboost.pkl                    — GradientBoosting (sklearn GradientBoostingClassifier)
+  risk_predictor.pkl             — legacy single model (backward compat)
 """
 
 from pathlib import Path
@@ -15,6 +18,15 @@ import numpy as np
 
 MODELS_DIR      = Path(__file__).resolve().parent.parent / 'models'
 RISK_MODEL_PATH = MODELS_DIR / 'risk_predictor.pkl'
+
+# ── Multi-model registry ──────────────────────────────────────────────────────
+_MODEL_FILES = {
+    'Lasso':         MODELS_DIR / 'lasso_logistic_regression.pkl',
+    'Random Forest': MODELS_DIR / 'random_forest.pkl',
+    'GradientBoosting': MODELS_DIR / 'xgboost.pkl',
+}
+
+_MODEL_CACHE: dict = {}   # in-memory cache so models are loaded only once
 
 FEATURE_NAMES = [
     'latest_hba1c',
@@ -52,7 +64,7 @@ def _poly_slope(obs_sorted, max_n=3):
         return 0.0
 
 
-# ── public API ────────────────────────────────────────────────────────────────
+# ── public API — feature extraction ──────────────────────────────────────────
 
 def extract_features(patient, observations, conditions):
     """
@@ -146,6 +158,154 @@ def extract_features(patient, observations, conditions):
     return feature_dict, feature_arr
 
 
+# ── public API — model loading ────────────────────────────────────────────────
+
+def load_risk_models():
+    """
+    Load all 3 models from disk into the in-memory cache.
+    Falls back to the legacy risk_predictor.pkl if individual files are missing.
+    Returns dict: {'Lasso': model, 'Random Forest': model, 'GradientBoosting': model}
+    Any missing model is absent from the dict.
+    """
+    global _MODEL_CACHE
+    if _MODEL_CACHE:
+        return _MODEL_CACHE
+
+    try:
+        import joblib
+    except ImportError:
+        return {}
+
+    loaded = {}
+    for name, path in _MODEL_FILES.items():
+        if path.exists():
+            try:
+                loaded[name] = joblib.load(path)
+            except Exception as exc:
+                print(f'[ml] could not load {name}: {exc}')
+
+    # Backward-compat: if none of the 3 loaded, try legacy single model
+    if not loaded and RISK_MODEL_PATH.exists():
+        try:
+            import joblib
+            m = joblib.load(RISK_MODEL_PATH)
+            loaded['Lasso'] = m   # treat legacy model as Lasso slot
+        except Exception as exc:
+            print(f'[ml] could not load risk_predictor: {exc}')
+
+    _MODEL_CACHE = loaded
+    return _MODEL_CACHE
+
+
+def load_risk_model():
+    """Legacy single-model loader — returns first available model or None."""
+    models = load_risk_models()
+    if not models:
+        return None
+    return next(iter(models.values()))
+
+
+# ── public API — ensemble prediction ─────────────────────────────────────────
+
+def predict_ensemble_score(features_arr, feature_dict=None):
+    """
+    Run all 3 models and return an ensemble result.
+
+    Returns
+    -------
+    {
+        'probability':     float,           # average of all available models
+        'model_scores':    {'Lasso': float, 'Random Forest': float, 'GradientBoosting': float},
+        'range_min':       float,
+        'range_max':       float,
+        'model_available': bool,
+    }
+    """
+    models = load_risk_models()
+    if not models:
+        # Full fallback — return neutral values
+        return {
+            'probability':     0.5,
+            'model_scores':    {},
+            'range_min':       0.5,
+            'range_max':       0.5,
+            'model_available': False,
+        }
+
+    scores = {}
+    for name, model in models.items():
+        try:
+            prob = float(model.predict_proba([features_arr])[0][1])
+            scores[name] = round(prob, 3)
+        except Exception as exc:
+            print(f'[ml] predict_proba failed for {name}: {exc}')
+
+    if not scores:
+        return {
+            'probability':     0.5,
+            'model_scores':    {},
+            'range_min':       0.5,
+            'range_max':       0.5,
+            'model_available': False,
+        }
+
+    vals = list(scores.values())
+    return {
+        'probability':     round(float(np.mean(vals)), 3),
+        'model_scores':    scores,
+        'range_min':       round(float(min(vals)), 3),
+        'range_max':       round(float(max(vals)), 3),
+        'model_available': True,
+    }
+
+
+# ── public API — risk decomposition ──────────────────────────────────────────
+
+def decompose_risk(feature_dict):
+    """
+    Run the ensemble on 3 feature variants to decompose overall risk into
+    sugar-driven vs BP-driven components.
+
+    Returns
+    -------
+    {
+        'overall':  float,   # ensemble probability on real features
+        'sugar':    float,   # BP features zeroed out
+        'bp':       float,   # sugar features zeroed out
+    }
+    """
+    # Neutral reference values
+    NORMAL_HBA1C = 5.4
+    NORMAL_SBP   = 118.0
+
+    def _arr(d):
+        return np.array([d[k] for k in FEATURE_NAMES], dtype=float)
+
+    overall_arr = _arr(feature_dict)
+
+    sugar_only = dict(feature_dict)
+    sugar_only['latest_sbp']    = NORMAL_SBP
+    sugar_only['bp_trend']      = 0.0
+    sugar_only['has_hypertension'] = 0
+
+    bp_only = dict(feature_dict)
+    bp_only['latest_hba1c']  = NORMAL_HBA1C
+    bp_only['hba1c_trend']   = 0.0
+    bp_only['has_diabetes']  = 0
+
+    overall_score = predict_ensemble_score(overall_arr)['probability']
+    sugar_score   = predict_ensemble_score(_arr(sugar_only))['probability']
+    bp_score      = predict_ensemble_score(_arr(bp_only))['probability']
+
+    return {
+        'overall': overall_score,
+        'sugar':   sugar_score,
+        'bp':      bp_score,
+    }
+
+
+# ── public API — trajectory helpers ──────────────────────────────────────────
+
 def _trajectory(obs_sorted, max_n=5, worsening_threshold=None, improving_threshold=None):
     """
     Fit a line through the last max_n readings (time in days as x-axis).
@@ -155,11 +315,10 @@ def _trajectory(obs_sorted, max_n=5, worsening_threshold=None, improving_thresho
     if not recent:
         return None, 'unknown', 0.0
 
-    # Use actual day offsets so the slope has real units (units/day)
     from datetime import date as _date
-    base_date = _to_date(recent[-1].date)   # oldest of the selection
+    base_date = _to_date(recent[-1].date)
     x, y = [], []
-    for o in reversed(recent):              # chronological order
+    for o in reversed(recent):
         d = _to_date(o.date)
         try:
             x.append((d - base_date).days)
@@ -174,9 +333,9 @@ def _trajectory(obs_sorted, max_n=5, worsening_threshold=None, improving_thresho
             return None, 'unknown', 0.0
 
     try:
-        coeffs  = np.polyfit(x, y, 1)
-        slope   = float(coeffs[0])                    # units per day
-        last_x  = x[-1]
+        coeffs    = np.polyfit(x, y, 1)
+        slope     = float(coeffs[0])
+        last_x    = x[-1]
         predicted = round(float(np.polyval(coeffs, last_x + 180)), 1)
 
         slope_per_month = slope * 30
@@ -192,42 +351,156 @@ def _trajectory(obs_sorted, max_n=5, worsening_threshold=None, improving_thresho
         return None, 'unknown', 0.0
 
 
-def predict_hba1c_trajectory(observations):
+def _weighted_projection(obs_sorted, max_n, horizon_days=180):
     """
-    Returns (predicted_hba1c_6mo, trend_label, slope_per_day).
-    trend_label: 'improving' | 'stable' | 'worsening' | 'unknown'
+    Exponentially weighted average of last max_n values, then project forward
+    using a linear fit weighted by recency (more recent = higher weight).
+    Returns projected float or None.
+    """
+    recent = obs_sorted[:max_n]
+    if not recent:
+        return None
+    if len(recent) == 1:
+        try:
+            return round(float(recent[0].value), 1)
+        except (ValueError, TypeError):
+            return None
+
+    from datetime import date as _date
+    base_date = _to_date(recent[-1].date)
+    x, y, w = [], [], []
+    for i, o in enumerate(reversed(recent)):
+        d = _to_date(o.date)
+        try:
+            xi = (d - base_date).days
+            x.append(xi)
+            y.append(float(o.value))
+            w.append(2 ** i)   # more recent readings get higher weight
+        except (ValueError, TypeError):
+            pass
+
+    if len(x) < 2:
+        return None
+    try:
+        coeffs    = np.polyfit(x, y, 1, w=w)
+        last_x    = x[-1]
+        return round(float(np.polyval(coeffs, last_x + horizon_days)), 1)
+    except (np.linalg.LinAlgError, ValueError):
+        return None
+
+
+def _quadratic_projection(obs_sorted, max_n, horizon_days=180):
+    """
+    Quadratic (degree-2) polyfit on last max_n readings.
+    Returns projected float or None (falls back to linear if < 3 points).
+    """
+    recent = obs_sorted[:max_n]
+    if not recent:
+        return None
+
+    from datetime import date as _date
+    base_date = _to_date(recent[-1].date)
+    x, y = [], []
+    for o in reversed(recent):
+        d = _to_date(o.date)
+        try:
+            x.append((d - base_date).days)
+            y.append(float(o.value))
+        except (ValueError, TypeError):
+            pass
+
+    if len(x) < 2:
+        return None
+    degree = 2 if len(x) >= 3 else 1
+    try:
+        coeffs = np.polyfit(x, y, degree)
+        last_x = x[-1]
+        return round(float(np.polyval(coeffs, last_x + horizon_days)), 1)
+    except (np.linalg.LinAlgError, ValueError):
+        return None
+
+
+# ── public API — multi-model trajectory projections ──────────────────────────
+
+def predict_multi_hba1c_trajectory(observations):
+    """
+    Return 3 HbA1c projections for 6 months out, one per model style.
+
+    Returns
+    -------
+    {
+        'lasso': float or None,   # linear projection (last 3 readings)
+        'rf':    float or None,   # quadratic projection (last 5 readings)
+        'xgb':   float or None,   # recency-weighted projection (last 5 readings)
+        'trend': str,             # overall trend label
+        'slope': float,
+    }
     """
     from patients.models import Observation as Obs
     hba1c_obs = sorted(
         [o for o in observations if o.code == Obs.LOINC_HBA1C and o.date is not None],
         key=lambda o: o.date, reverse=True,
     )
-    return _trajectory(hba1c_obs, max_n=5,
-                       worsening_threshold=0.2,
-                       improving_threshold=0.2)
+    lasso_val, trend, slope = _trajectory(hba1c_obs, max_n=3,
+                                          worsening_threshold=0.2,
+                                          improving_threshold=0.2)
+    rf_val  = _quadratic_projection(hba1c_obs, max_n=5)
+    xgb_val = _weighted_projection(hba1c_obs,  max_n=5)
+
+    return {
+        'lasso': lasso_val,
+        'rf':    rf_val,
+        'xgb':   xgb_val,
+        'trend': trend,
+        'slope': round(slope, 5),
+    }
 
 
-def predict_sbp_trajectory(observations):
+def predict_multi_sbp_trajectory(observations):
     """
-    Returns (predicted_sbp_6mo, trend_label, slope_per_day).
+    Return 3 SBP projections for 6 months out, one per model style.
+
+    Returns
+    -------
+    {
+        'lasso': float or None,   # linear 3-point projection
+        'rf':    float or None,   # recency-weighted projection (last 5)
+        'xgb':   float or None,   # linear 5-point projection
+        'trend': str,
+        'slope': float,
+    }
     """
     from patients.models import Observation as Obs
     sbp_obs = sorted(
         [o for o in observations if o.code == Obs.LOINC_SBP and o.date is not None],
         key=lambda o: o.date, reverse=True,
     )
-    return _trajectory(sbp_obs, max_n=5,
-                       worsening_threshold=2,
-                       improving_threshold=2)
+    lasso_val, trend, slope = _trajectory(sbp_obs, max_n=3,
+                                          worsening_threshold=2,
+                                          improving_threshold=2)
+    rf_val, _, _  = _trajectory(sbp_obs, max_n=5,
+                                 worsening_threshold=2,
+                                 improving_threshold=2)
+    xgb_val = _weighted_projection(sbp_obs, max_n=5)
+
+    return {
+        'lasso': lasso_val,
+        'rf':    rf_val,
+        'xgb':   xgb_val,
+        'trend': trend,
+        'slope': round(slope, 5),
+    }
 
 
-def load_risk_model():
-    """Load the trained Pipeline from disk. Returns None if not yet trained."""
-    if not RISK_MODEL_PATH.exists():
-        return None
-    try:
-        import joblib
-        return joblib.load(RISK_MODEL_PATH)
-    except Exception as exc:
-        print(f'[ml] could not load risk model: {exc}')
-        return None
+# ── legacy single-trajectory wrappers (kept for backward compat) ─────────────
+
+def predict_hba1c_trajectory(observations):
+    """Returns (predicted_hba1c_6mo, trend_label, slope_per_day)."""
+    r = predict_multi_hba1c_trajectory(observations)
+    return r['lasso'], r['trend'], r['slope']
+
+
+def predict_sbp_trajectory(observations):
+    """Returns (predicted_sbp_6mo, trend_label, slope_per_day)."""
+    r = predict_multi_sbp_trajectory(observations)
+    return r['lasso'], r['trend'], r['slope']
