@@ -765,20 +765,22 @@ def analytics(request):
 @api_view(['GET'])
 def patient_predict(request, patient_id):
     """
-    ML-powered 6-month risk forecast for a single patient.
+    Ensemble ML 6-month risk forecast for a single patient.
 
-    Uses the trained LogisticRegression pipeline (models/risk_predictor.pkl)
-    for progression probability, and numpy.polyfit on recent lab/vitals
-    history for HbA1c and SBP trajectory projections.
+    Runs 3 models (Lasso LR, Random Forest, GradientBoosting) and returns:
+      - ensemble probability (average of all 3)
+      - individual model scores
+      - sugar vs BP risk decomposition
+      - multi-model HbA1c and SBP trajectory projections
 
-    Falls back to rule-based risk score when no trained model exists
-    (model_available: false in response).
+    Falls back to rule-based score when no trained models exist.
     """
     from patients.ml_models import (
         extract_features,
-        predict_hba1c_trajectory,
-        predict_sbp_trajectory,
-        load_risk_model,
+        predict_ensemble_score,
+        decompose_risk,
+        predict_multi_hba1c_trajectory,
+        predict_multi_sbp_trajectory,
     )
 
     try:
@@ -791,27 +793,33 @@ def patient_predict(request, patient_id):
 
     features_dict, features_arr = extract_features(patient, observations, conditions)
 
-    # ── Progression probability ──────────────────────────────────────
-    model         = load_risk_model()
-    model_available = model is not None
+    # ── Ensemble probability across all 3 models ──────────────────────
+    ensemble = predict_ensemble_score(features_arr, features_dict)
+    model_available = ensemble['model_available']
+    prob = ensemble['probability']
 
-    if model_available:
-        prob = float(model.predict_proba([features_arr])[0][1])
-    else:
+    if not model_available:
         # Fallback: normalise rule-based score to 0-1
         from patients.risk_engine import assess_risk
         result = assess_risk(patient, observations, conditions)
         prob   = min(result.score / 100.0, 0.99)
+        ensemble['probability'] = round(prob, 3)
 
-    # ── Trajectory predictions ────────────────────────────────────────
-    pred_hba1c, hba1c_trend, _ = predict_hba1c_trajectory(observations)
-    pred_sbp,   sbp_trend,   _ = predict_sbp_trajectory(observations)
+    # ── Risk decomposition (sugar vs BP contribution) ─────────────────
+    decomposed = decompose_risk(features_dict)
+
+    # ── Multi-model trajectory projections ────────────────────────────
+    hba1c_proj = predict_multi_hba1c_trajectory(observations)
+    sbp_proj   = predict_multi_sbp_trajectory(observations)
+
+    hba1c_trend = hba1c_proj['trend']
+    sbp_trend   = sbp_proj['trend']
 
     # ── Overall trajectory ────────────────────────────────────────────
     trends = {hba1c_trend, sbp_trend}
     if 'worsening' in trends:
         risk_trajectory = 'worsening'
-    elif 'worsening' not in trends and 'improving' in trends and 'stable' not in trends:
+    elif 'improving' in trends and 'stable' not in trends:
         risk_trajectory = 'improving'
     else:
         risk_trajectory = 'stable'
@@ -835,22 +843,46 @@ def patient_predict(request, patient_id):
         recommendation = 'Continue current care plan'
 
     return Response({
-        'patient_id':              patient_id,
-        'patient_name':            patient.full_name(),
-        'cohort':                  patient.cohort,
-        'age':                     patient.age,
-        'gender':                  patient.gender,
-        'progression_probability': round(prob, 3),
-        'risk_trajectory':         risk_trajectory,
-        'predicted_hba1c_6mo':     pred_hba1c,
-        'predicted_sbp_6mo':       pred_sbp,
-        'hba1c_trend':             hba1c_trend,
-        'sbp_trend':               sbp_trend,
-        'trend_direction':         risk_trajectory,
-        'confidence':              confidence,
-        'recommendation':          recommendation,
+        # Patient info
+        'patient_id':   patient_id,
+        'patient_name': patient.full_name(),
+        'cohort':       patient.cohort,
+        'age':          patient.age,
+        'gender':       patient.gender,
+
+        # Ensemble risk
+        'progression_probability': prob,
+        'model_scores':            ensemble['model_scores'],
+        'range_min':               ensemble['range_min'],
+        'range_max':               ensemble['range_max'],
         'model_available':         model_available,
-        'features':                features_dict,
+
+        # Risk decomposition
+        'sugar_risk': round(decomposed['sugar'], 3),
+        'bp_risk':    round(decomposed['bp'],    3),
+
+        # Multi-model trajectories
+        'sugar_forecast': {
+            'lasso': hba1c_proj['lasso'],
+            'rf':    hba1c_proj['rf'],
+            'xgb':   hba1c_proj['xgb'],
+        },
+        'bp_forecast': {
+            'lasso': sbp_proj['lasso'],
+            'rf':    sbp_proj['rf'],
+            'xgb':   sbp_proj['xgb'],
+        },
+
+        # Legacy fields (kept for backward compat)
+        'predicted_hba1c_6mo': hba1c_proj['lasso'],
+        'predicted_sbp_6mo':   sbp_proj['lasso'],
+        'hba1c_trend':         hba1c_trend,
+        'sbp_trend':           sbp_trend,
+        'risk_trajectory':     risk_trajectory,
+        'trend_direction':     risk_trajectory,
+        'confidence':          confidence,
+        'recommendation':      recommendation,
+        'features':            features_dict,
     })
 
 
