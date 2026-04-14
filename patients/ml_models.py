@@ -31,14 +31,29 @@ _MODEL_CACHE: dict = {}   # in-memory cache so models are loaded only once
 FEATURE_NAMES = [
     'latest_hba1c',
     'latest_sbp',
+    'latest_dbp',
+    'latest_bmi',
+    'latest_cholesterol',
     'age',
+    'gender_m',
+    'age_group',
     'has_diabetes',
     'has_hypertension',
-    'hba1c_trend',
-    'bp_trend',
-    'days_since_last_visit',
-    'care_gaps_count',
+    'is_comorbid',
+    'total_encounters',
+    'encounters_last_year',
+    'active_medications',
+    'active_conditions',
+    'low_engagement',
+    'undertreated',
+    'high_condition_burden',
+    'missing_hba1c',
 ]
+
+# LOINC codes for vitals not defined in Observation model constants
+_LOINC_DBP   = '8462-4'    # Diastolic Blood Pressure
+_LOINC_BMI   = '39156-5'   # Body Mass Index
+_LOINC_CHOL  = '2093-3'    # Total Cholesterol
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -66,26 +81,46 @@ def _poly_slope(obs_sorted, max_n=3):
 
 # ── public API — feature extraction ──────────────────────────────────────────
 
-def extract_features(patient, observations, conditions):
+def extract_features(patient, observations, conditions,
+                     medications=None, encounters=None):
     """
-    Build the 9-element feature vector for a patient.
+    Build the 19-element feature vector for a patient.
 
     Parameters
     ----------
     patient      : patients.models.Patient instance
     observations : iterable of Observation (pre-fetched, any order)
     conditions   : iterable of Condition   (pre-fetched, any order)
+    medications  : iterable of Medication  (pre-fetched, any order) or None
+    encounters   : iterable of Encounter   (pre-fetched, any order) or None
+
+    If medications or encounters are None they are fetched lazily via the
+    patient's related managers (fine for single-patient predict; for bulk
+    training always pass pre-fetched lists).
 
     Returns
     -------
-    (feature_dict, numpy_array)  — both contain the same 9 values.
+    (feature_dict, numpy_array)  — both contain the same 19 values.
     """
     from patients.models import Observation as Obs, Condition as Cond
-    from datetime import date as _date
+    from datetime import date as _date, timedelta
 
-    today = _date.today()
+    today        = _date.today()
+    one_year_ago = today - timedelta(days=365)
+
     obs_list  = list(observations)
     cond_list = list(conditions)
+
+    # Lazy-load medications / encounters only if not pre-fetched
+    if medications is None:
+        med_list = list(patient.medications.all())
+    else:
+        med_list = list(medications)
+
+    if encounters is None:
+        enc_list = list(patient.encounters.all())
+    else:
+        enc_list = list(encounters)
 
     # ── HbA1c ────────────────────────────────────────────────────────
     hba1c_obs = sorted(
@@ -111,48 +146,112 @@ def extract_features(patient, observations, conditions):
         except (ValueError, TypeError):
             pass
 
+    # ── DBP ──────────────────────────────────────────────────────────
+    dbp_obs = sorted(
+        [o for o in obs_list if o.code == _LOINC_DBP and o.date is not None],
+        key=lambda o: o.date, reverse=True,
+    )
+    latest_dbp = 0.0
+    if dbp_obs:
+        try:
+            latest_dbp = float(dbp_obs[0].value)
+        except (ValueError, TypeError):
+            pass
+
+    # ── BMI ──────────────────────────────────────────────────────────
+    bmi_obs = sorted(
+        [o for o in obs_list if o.code == _LOINC_BMI and o.date is not None],
+        key=lambda o: o.date, reverse=True,
+    )
+    latest_bmi = 0.0
+    if bmi_obs:
+        try:
+            latest_bmi = float(bmi_obs[0].value)
+        except (ValueError, TypeError):
+            pass
+
+    # ── Cholesterol ───────────────────────────────────────────────────
+    chol_obs = sorted(
+        [o for o in obs_list if o.code == _LOINC_CHOL and o.date is not None],
+        key=lambda o: o.date, reverse=True,
+    )
+    latest_cholesterol = 0.0
+    if chol_obs:
+        try:
+            latest_cholesterol = float(chol_obs[0].value)
+        except (ValueError, TypeError):
+            pass
+
     # ── Age ───────────────────────────────────────────────────────────
     age = patient.age or 0
 
+    # ── Gender ───────────────────────────────────────────────────────
+    gender_m = 1 if (patient.gender or '').upper() == 'M' else 0
+
+    # ── Age group (0=0-18, 1=19-35, 2=36-50, 3=51-65, 4=65+) ────────
+    if   age <= 18: age_group = 0
+    elif age <= 35: age_group = 1
+    elif age <= 50: age_group = 2
+    elif age <= 65: age_group = 3
+    else:           age_group = 4
+
     # ── Conditions ───────────────────────────────────────────────────
-    active_codes = {c.code for c in cond_list if c.stop is None}
+    active_conds     = [c for c in cond_list if c.stop is None]
+    active_codes     = {c.code for c in active_conds}
+    active_conditions = len(active_conds)
     has_diabetes     = any(c in active_codes for c in Cond.DIABETES_CODES)
     has_hypertension = any(c in active_codes for c in Cond.HYPERTENSION_CODES)
+    is_comorbid      = int(has_diabetes and has_hypertension)
 
-    # ── Trends (polyfit slope over last 3 readings) ───────────────────
-    hba1c_trend = _poly_slope(hba1c_obs, max_n=3)
-    bp_trend    = _poly_slope(sbp_obs,   max_n=3)
+    # ── Medications ───────────────────────────────────────────────────
+    active_medications = sum(1 for m in med_list if m.stop is None)
 
-    # ── Days since last visit (proxy: latest observation date) ───────
-    all_dates = [o.date for o in obs_list if o.date is not None]
-    if all_dates:
-        days_since_last_visit = (today - _to_date(max(all_dates))).days
-    else:
-        days_since_last_visit = 999
+    # ── Encounters ────────────────────────────────────────────────────
+    total_encounters = len(enc_list)
+    encounters_last_year = sum(
+        1 for e in enc_list
+        if e.start is not None and _to_date(e.start) >= one_year_ago
+    )
 
-    # ── Care gaps count (0-3) ─────────────────────────────────────────
-    care_gaps = 0
-    if latest_hba1c >= 8.0:
-        care_gaps += 1
-    if latest_sbp >= 140:
-        care_gaps += 1
-    if hba1c_obs:
-        last_hba1c_days = (today - _to_date(hba1c_obs[0].date)).days
-        if last_hba1c_days > 365:
-            care_gaps += 1
-    elif has_diabetes or has_hypertension:
-        care_gaps += 1
+    # ── Derived flags ─────────────────────────────────────────────────
+    # low_engagement: no encounters in the past year
+    low_engagement = int(encounters_last_year == 0)
+
+    # undertreated: has chronic dx but zero active medications
+    undertreated = int(
+        active_medications == 0 and (has_diabetes or has_hypertension)
+    )
+
+    # high_condition_burden: 3 or more active conditions
+    high_condition_burden = int(active_conditions >= 3)
+
+    # missing_hba1c: no HbA1c reading in last 365 days
+    recent_hba1c = any(
+        o for o in hba1c_obs
+        if o.date is not None and _to_date(o.date) >= one_year_ago
+    )
+    missing_hba1c = int(not recent_hba1c)
 
     feature_dict = {
-        'latest_hba1c':          latest_hba1c,
-        'latest_sbp':            latest_sbp,
-        'age':                   age,
-        'has_diabetes':          int(has_diabetes),
-        'has_hypertension':      int(has_hypertension),
-        'hba1c_trend':           hba1c_trend,
-        'bp_trend':              bp_trend,
-        'days_since_last_visit': min(days_since_last_visit, 999),
-        'care_gaps_count':       care_gaps,
+        'latest_hba1c':        latest_hba1c,
+        'latest_sbp':          latest_sbp,
+        'latest_dbp':          latest_dbp,
+        'latest_bmi':          latest_bmi,
+        'latest_cholesterol':  latest_cholesterol,
+        'age':                 age,
+        'gender_m':            gender_m,
+        'age_group':           age_group,
+        'has_diabetes':        int(has_diabetes),
+        'has_hypertension':    int(has_hypertension),
+        'is_comorbid':         is_comorbid,
+        'total_encounters':    total_encounters,
+        'encounters_last_year': encounters_last_year,
+        'active_medications':  active_medications,
+        'active_conditions':   active_conditions,
+        'low_engagement':      low_engagement,
+        'undertreated':        undertreated,
+        'high_condition_burden': high_condition_burden,
+        'missing_hba1c':       missing_hba1c,
     }
     feature_arr = np.array([feature_dict[k] for k in FEATURE_NAMES], dtype=float)
     return feature_dict, feature_arr
