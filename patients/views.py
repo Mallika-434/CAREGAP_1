@@ -788,6 +788,20 @@ def patient_predict(request, patient_id):
     except Patient.DoesNotExist:
         return Response({'error': 'Patient not found'}, status=404)
 
+    if patient.cohort == 'pediatric':
+        return Response({
+            "error": "not_applicable",
+            "message": "Prediction models are not applicable for pediatric patients.",
+            "cohort": "pediatric"
+        })
+
+    if patient.cohort == 'at_risk':
+        return Response({
+            "error": "not_available",
+            "message": "Disease onset prediction for at-risk patients is coming soon.",
+            "cohort": "at_risk"
+        })
+
     observations = list(patient.observations.all())
     conditions   = list(patient.conditions.all())
     medications  = list(patient.medications.all())
