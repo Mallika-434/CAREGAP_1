@@ -2730,7 +2730,20 @@
       fetch(`/api/patients/${id}/predict/`)
         .then(r => r.json())
         .then(d => {
-          if (d.error) { res.innerHTML = `<div style="color:#ef4444;padding:12px">${d.error}</div>`; return; }
+          if (d.error) {
+            const icon = d.cohort === 'pediatric' ? '👶' : d.cohort === 'at_risk' ? '⏳' : '⚠️';
+            res.innerHTML = `
+              <div style="text-align:center;padding:40px 20px;color:#555;">
+                <div style="font-size:2.5rem;margin-bottom:12px;">${icon}</div>
+                <div style="font-size:1.1rem;font-weight:600;margin-bottom:8px;">${d.message || d.error}</div>
+                <div style="font-size:0.85rem;color:#888;">
+                  ${d.cohort === 'pediatric' ? 'These models were trained on adult chronic patients only.'
+                    : d.cohort === 'at_risk' ? 'Disease onset models are coming in the next phase.'
+                    : 'An unexpected error occurred.'}
+                </div>
+              </div>`;
+            return;
+          }
 
           const pct        = Math.round((d.progression_probability || 0) * 100);
           const riskColor  = pct >= 70 ? '#ef4444' : pct >= 40 ? '#f59e0b' : '#22c55e';
