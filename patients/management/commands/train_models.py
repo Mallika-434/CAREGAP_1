@@ -9,6 +9,10 @@ the models/ directory:
   models/xgboost.pkl                    — Gradient Boosted Trees (sklearn)
   models/risk_predictor.pkl             — legacy alias (copy of Lasso)
 
+Labels are derived from outcome-based clinical criteria (ACC/AHA 2023 and
+ADA 2024 guidelines) rather than the rule engine score, to avoid circular
+reasoning.  Target HIGH-risk prevalence: 15–25% of chronic patients.
+
 Usage:
     python manage.py train_models
 
@@ -16,6 +20,86 @@ Re-run whenever data is refreshed (after import_synthea or create_demo_db).
 """
 
 from django.core.management.base import BaseCommand
+
+
+def outcome_label(patient, obs_list, conds_list, meds_list, enc_list):
+    """
+    Outcome-based HIGH RISK label — no circular dependency on the rule engine.
+
+    Based on ACC/AHA 2023 Hypertension Guidelines and ADA 2024 Standards of
+    Medical Care.  Returns 1 (HIGH) or 0 (LOW).
+
+    Criteria (any one sufficient for HIGH):
+      - SBP >= 135 with <= 1 active medication  (undertreated Stage 1/2 HTN)
+      - HbA1c >= 7.0 with no encounters in past year  (lost to follow-up)
+      - > 270 days since last encounter with active HTN or diabetes dx
+      - SBP >= 130 with no encounters in past year
+      - Age < 50 with SBP >= 140  (early-onset Stage 2 HTN, higher lifetime risk)
+      - Age < 50 with HbA1c >= 7.5  (early-onset poor glycemic control)
+      - SBP >= 128, > 200 days since encounter, <= 1 encounter last year
+      - HbA1c >= 6.8, > 200 days since encounter, <= 1 encounter last year
+    """
+    from datetime import date, timedelta
+
+    # ── Latest SBP ───────────────────────────────────────────────────
+    sbp_obs = sorted(
+        [o for o in obs_list if o.code == '8480-6' and o.date is not None],
+        key=lambda o: o.date, reverse=True,
+    )
+    sbp = 0.0
+    if sbp_obs:
+        try:
+            sbp = float(sbp_obs[0].value)
+        except (ValueError, TypeError):
+            pass
+
+    # ── Latest HbA1c ─────────────────────────────────────────────────
+    hba1c_obs = sorted(
+        [o for o in obs_list if o.code == '4548-4' and o.date is not None],
+        key=lambda o: o.date, reverse=True,
+    )
+    hba1c = 0.0
+    if hba1c_obs:
+        try:
+            hba1c = float(hba1c_obs[0].value)
+        except (ValueError, TypeError):
+            pass
+
+    # ── Medications ───────────────────────────────────────────────────
+    active_meds = sum(1 for m in meds_list if m.stop is None)
+
+    # ── Encounters ────────────────────────────────────────────────────
+    one_year_ago = date.today() - timedelta(days=365)
+    enc_dates = []
+    for e in enc_list:
+        if e.start is not None:
+            d = e.start.date() if hasattr(e.start, 'date') else e.start
+            enc_dates.append(d)
+
+    recent_encs = sum(1 for d in enc_dates if d >= one_year_ago)
+    days = (date.today() - max(enc_dates)).days if enc_dates else 999
+
+    # ── Conditions ────────────────────────────────────────────────────
+    has_diabetes = any(
+        c.code in ('44054006', '73211009') and c.stop is None
+        for c in conds_list
+    )
+    has_htn = any(
+        c.code in ('59621000', '38341003') and c.stop is None
+        for c in conds_list
+    )
+    age = patient.age or 0
+
+    # ── Outcome-based HIGH RISK criteria (ACC/AHA 2023, ADA 2024) ────
+    if sbp >= 135 and active_meds <= 1:                          return 1
+    if hba1c >= 7.0 and recent_encs == 0:                        return 1
+    if days > 270 and (has_diabetes or has_htn):                 return 1
+    if sbp >= 130 and recent_encs == 0:                          return 1
+    if age < 50 and sbp >= 140:                                  return 1
+    if age < 50 and hba1c >= 7.5:                                return 1
+    if sbp >= 128 and days > 200 and recent_encs <= 1:           return 1
+    if hba1c >= 6.8 and days > 200 and recent_encs <= 1:         return 1
+    return 0
 
 
 class Command(BaseCommand):
@@ -34,19 +118,19 @@ class Command(BaseCommand):
         from sklearn.pipeline import Pipeline
 
         from patients.models import Patient
-        from patients.risk_engine import assess_risk
         from patients.ml_models import extract_features, MODELS_DIR, RISK_MODEL_PATH
 
         # ── 1. Load patients ──────────────────────────────────────────
         self.stdout.write('Loading chronic patients…')
         patients = list(
             Patient.objects.filter(cohort='chronic')
-                           .prefetch_related('observations', 'conditions')
+                           .prefetch_related('observations', 'conditions',
+                                             'medications', 'encounters')
         )
         self.stdout.write(f'  {len(patients):,} patients loaded')
 
-        # ── 2. Extract features + labels ─────────────────────────────
-        self.stdout.write('Extracting features…')
+        # ── 2. Extract features + outcome-based labels ────────────────
+        self.stdout.write('Extracting features and computing outcome labels…')
         X_rows, y_rows = [], []
         skipped = 0
 
@@ -56,11 +140,12 @@ class Command(BaseCommand):
 
             obs   = list(patient.observations.all())
             conds = list(patient.conditions.all())
+            meds  = list(patient.medications.all())
+            encs  = list(patient.encounters.all())
 
             try:
-                result         = assess_risk(patient, obs, conds)
-                label          = 1 if result.score >= 60 else 0
-                _, feature_arr = extract_features(patient, obs, conds)
+                label          = outcome_label(patient, obs, conds, meds, encs)
+                _, feature_arr = extract_features(patient, obs, conds, meds, encs)
                 X_rows.append(feature_arr)
                 y_rows.append(label)
             except Exception as exc:
@@ -77,14 +162,31 @@ class Command(BaseCommand):
         X = np.array(X_rows)
         y = np.array(y_rows)
 
-        pos = int(y.sum())
-        neg = len(y) - pos
+        pos  = int(y.sum())
+        neg  = len(y) - pos
+        pct  = 100 * pos / len(y)
+
         self.stdout.write(
-            f'  Samples: {len(y):,}  (HIGH={pos:,} {100*pos/len(y):.1f}%,'
-            f'  LOW={neg:,} {100*neg/len(y):.1f}%)'
+            f'  Labels: HIGH={pos:,} ({pct:.1f}%)  LOW={neg:,} ({100-pct:.1f}%)'
         )
         if skipped:
             self.stdout.write(self.style.WARNING(f'  Skipped: {skipped}'))
+
+        # Warn if label balance is outside expected range
+        if pct < 10:
+            self.stdout.write(self.style.WARNING(
+                f'  ⚠ HIGH-risk rate {pct:.1f}% is below 10% — '
+                'consider loosening outcome_label criteria.'
+            ))
+        elif pct > 35:
+            self.stdout.write(self.style.WARNING(
+                f'  ⚠ HIGH-risk rate {pct:.1f}% is above 35% — '
+                'consider tightening outcome_label criteria.'
+            ))
+        else:
+            self.stdout.write(self.style.SUCCESS(
+                f'  Label balance OK (target 15–25%)'
+            ))
 
         # ── 3. Train / test split ─────────────────────────────────────
         X_train, X_test, y_train, y_test = train_test_split(
@@ -104,12 +206,11 @@ class Command(BaseCommand):
                 Pipeline([
                     ('scaler', StandardScaler()),
                     ('clf',    LogisticRegression(
-                        penalty='l1',
-                        solver='liblinear',
-                        max_iter=1000,
+                        solver='saga',
+                        max_iter=2000,
                         random_state=42,
                         class_weight='balanced',
-                        C=0.5,
+                        C=1.0,
                     )),
                 ]),
             ),
@@ -146,8 +247,8 @@ class Command(BaseCommand):
 
         # ── 5. Train, evaluate, save each model ──────────────────────
         lasso_model = None
-        for label, save_path, pipeline in model_defs:
-            self.stdout.write(f'\nTraining {label}…')
+        for model_name, save_path, pipeline in model_defs:
+            self.stdout.write(f'\nTraining {model_name}…')
             pipeline.fit(X_train, y_train)
 
             y_pred = pipeline.predict(X_test)
@@ -172,7 +273,7 @@ class Command(BaseCommand):
             joblib.dump(pipeline, save_path)
             self.stdout.write(self.style.SUCCESS(f'  Saved -> {save_path.name}'))
 
-            if 'Lasso' in label:
+            if 'Lasso' in model_name:
                 lasso_model = pipeline
 
         # ── 6. Save legacy risk_predictor.pkl (Lasso alias) ──────────

@@ -790,8 +790,12 @@ def patient_predict(request, patient_id):
 
     observations = list(patient.observations.all())
     conditions   = list(patient.conditions.all())
+    medications  = list(patient.medications.all())
+    encounters   = list(patient.encounters.all())
 
-    features_dict, features_arr = extract_features(patient, observations, conditions)
+    features_dict, features_arr = extract_features(
+        patient, observations, conditions, medications, encounters
+    )
 
     # ── Ensemble probability across all 3 models ──────────────────────
     ensemble = predict_ensemble_score(features_arr, features_dict)
