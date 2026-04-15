@@ -28,6 +28,159 @@ _MODEL_FILES = {
 
 _MODEL_CACHE: dict = {}   # in-memory cache so models are loaded only once
 
+# Onset model registry
+_ONSET_MODEL_FILES = {
+    'htn_lasso':              'htn_lasso.pkl',
+    'htn_random_forest':      'htn_random_forest.pkl',
+    'htn_gradient_boosting':  'htn_gradient_boosting.pkl',
+    't2d_lasso':              'diabetes_lasso.pkl',
+    't2d_random_forest':      'diabetes_random_forest.pkl',
+    't2d_gradient_boosting':  'diabetes_gradient_boosting.pkl',
+    'scaler_htn':             'scaler_htn.pkl',
+    'scaler_t2d':             'scaler_t2d.pkl',
+}
+_ONSET_CACHE: dict = {}
+
+ONSET_FEATURE_NAMES = [
+    'age', 'latest_sbp', 'latest_dbp', 'latest_bmi',
+    'latest_cholesterol', 'total_encounters',
+    'encounters_last_year', 'active_medications',
+    'active_conditions', 'days_since_last_encounter',
+    'gender_m', 'age_group', 'low_engagement'
+]
+
+def _load_onset_model(key: str):
+    if key not in _ONSET_CACHE:
+        path = MODELS_DIR / _ONSET_MODEL_FILES[key]
+        if not path.exists():
+            return None
+        import joblib
+        _ONSET_CACHE[key] = joblib.load(path)
+    return _ONSET_CACHE[key]
+
+
+def extract_onset_features(observations, encounters, medications, conditions, patient):
+    """Extract 13 features for onset risk models.
+    Same contract as extract_features() — no ORM queries, callers pass lists.
+    """
+    from datetime import date, timedelta
+
+    today = date.today()
+    one_year_ago = today - timedelta(days=365)
+
+    # Latest observations
+    def latest_val(code):
+        obs = [o for o in observations if o.code == code]
+        if not obs:
+            return 0.0
+        newest = max(obs, key=lambda o: _to_date(o.date))
+        try:
+            return float(newest.value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    latest_sbp  = latest_val('8480-6')
+    latest_dbp  = latest_val('8462-4')
+    latest_bmi  = latest_val('39156-5')
+    latest_chol = latest_val('2093-3')
+
+    # Encounters
+    enc_dates = [_to_date(e.start) for e in encounters if e.start]
+    total_enc = len(enc_dates)
+    enc_last_year = sum(1 for d in enc_dates if d >= one_year_ago)
+    days_since = (today - max(enc_dates)).days if enc_dates else 999
+
+    # Medications and conditions
+    active_meds  = sum(1 for m in medications if m.stop is None)
+    active_conds = sum(1 for c in conditions if c.stop is None)
+
+    # Derived
+    age = patient.age or 0
+    gender_m = 1 if patient.gender == 'M' else 0
+
+    if age < 18:
+        age_group = 0
+    elif age < 40:
+        age_group = 1
+    elif age < 60:
+        age_group = 2
+    else:
+        age_group = 3
+
+    low_engagement = int(enc_last_year == 0 or days_since > 270)
+
+    return [
+        age, latest_sbp, latest_dbp, latest_bmi, latest_chol,
+        total_enc, enc_last_year, active_meds, active_conds,
+        days_since, gender_m, age_group, low_engagement
+    ]
+
+
+def predict_onset_risk(observations, encounters, medications, conditions, patient):
+    """Run HTN and T2D onset risk models for an at-risk patient.
+    Returns dict with individual scores, ensemble average, and availability flag.
+    """
+    import numpy as np
+
+    features = extract_onset_features(
+        observations, encounters, medications, conditions, patient
+    )
+
+    result = {
+        'available': False,
+        'htn': {'lasso': None, 'random_forest': None, 'gradient_boosting': None,
+                'ensemble': None, 'range_min': None, 'range_max': None},
+        't2d': {'lasso': None, 'random_forest': None, 'gradient_boosting': None,
+                'ensemble': None, 'range_min': None, 'range_max': None},
+        'features': dict(zip(ONSET_FEATURE_NAMES, features)),
+    }
+
+    scaler_htn = _load_onset_model('scaler_htn')
+    scaler_t2d = _load_onset_model('scaler_t2d')
+
+    if scaler_htn is None or scaler_t2d is None:
+        return result
+
+    X = np.array(features).reshape(1, -1)
+    X_htn = scaler_htn.transform(X)
+    X_t2d = scaler_t2d.transform(X)
+
+    # HTN models
+    htn_scores = []
+    for key, label in [('htn_lasso', 'lasso'),
+                        ('htn_random_forest', 'random_forest'),
+                        ('htn_gradient_boosting', 'gradient_boosting')]:
+        model = _load_onset_model(key)
+        if model:
+            prob = float(model.predict_proba(X_htn)[0][1])
+            result['htn'][label] = round(prob * 100, 1)
+            htn_scores.append(prob)
+
+    if htn_scores:
+        result['htn']['ensemble']  = round(sum(htn_scores) / len(htn_scores) * 100, 1)
+        result['htn']['range_min'] = round(min(htn_scores) * 100, 1)
+        result['htn']['range_max'] = round(max(htn_scores) * 100, 1)
+
+    # T2D models
+    t2d_scores = []
+    for key, label in [('t2d_lasso', 'lasso'),
+                        ('t2d_random_forest', 'random_forest'),
+                        ('t2d_gradient_boosting', 'gradient_boosting')]:
+        model = _load_onset_model(key)
+        if model:
+            prob = float(model.predict_proba(X_t2d)[0][1])
+            result['t2d'][label] = round(prob * 100, 1)
+            t2d_scores.append(prob)
+
+    if t2d_scores:
+        result['t2d']['ensemble']  = round(sum(t2d_scores) / len(t2d_scores) * 100, 1)
+        result['t2d']['range_min'] = round(min(t2d_scores) * 100, 1)
+        result['t2d']['range_max'] = round(max(t2d_scores) * 100, 1)
+
+    result['available'] = bool(htn_scores and t2d_scores)
+    return result
+
+
 FEATURE_NAMES = [
     'latest_hba1c',
     'latest_sbp',

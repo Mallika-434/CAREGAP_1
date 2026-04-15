@@ -904,6 +904,40 @@ def patient_predict(request, patient_id):
     })
 
 
+@api_view(['GET'])
+def patient_onset_risk(request, pk):
+    """GET /api/patients/<id>/onset-risk/
+    Returns HTN and T2D onset risk scores for at-risk patients.
+    """
+    from .ml_models import predict_onset_risk
+
+    try:
+        patient = Patient.objects.get(patient_id=pk)
+    except Patient.DoesNotExist:
+        return Response({'error': 'Patient not found'}, status=404)
+
+    if patient.cohort != 'at_risk':
+        return Response({
+            'error': 'not_applicable',
+            'message': 'Onset risk models are only available for at-risk patients.',
+            'cohort': patient.cohort,
+        })
+
+    observations = list(patient.observations.all())
+    encounters   = list(patient.encounters.all())
+    medications  = list(patient.medications.all())
+    conditions   = list(patient.conditions.all())
+
+    result = predict_onset_risk(observations, encounters, medications, conditions, patient)
+
+    return Response({
+        'patient_id': str(patient.patient_id),
+        'name': f"{patient.first} {patient.last}",
+        'cohort': patient.cohort,
+        'onset_risk': result,
+    })
+
+
 # ── 8. Triage Dashboard (Emergency / Urgent Care) ─────────────────
 # Source: ACC/AHA 2023 Hypertension Guidelines
 # Source: ADA Standards of Medical Care 2024
