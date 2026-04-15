@@ -2731,14 +2731,112 @@
         .then(r => r.json())
         .then(d => {
           if (d.error) {
-            const icon = d.cohort === 'pediatric' ? '👶' : d.cohort === 'at_risk' ? '⏳' : '⚠️';
+            if (d.cohort === 'at_risk') {
+              // Fetch onset risk for at-risk patients
+              res.innerHTML = `<div style="text-align:center;padding:30px;color:#888;">
+                <div style="font-size:1.5rem;margin-bottom:8px;">⏳</div>
+                <div>Loading disease onset risk...</div>
+              </div>`;
+              fetch(`/api/patients/${id}/onset-risk/`)
+                .then(r => r.json())
+                .then(od => {
+                  if (!od.onset_risk || !od.onset_risk.available) {
+                    res.innerHTML = `
+                      <div style="text-align:center;padding:40px 20px;color:#555;">
+                        <div style="font-size:2.5rem;margin-bottom:12px;">⏳</div>
+                        <div style="font-size:1.1rem;font-weight:600;margin-bottom:8px;">Onset models not available</div>
+                        <div style="font-size:0.85rem;color:#888;">Place onset pkl files in the models/ folder.</div>
+                      </div>`;
+                    return;
+                  }
+                  const htn = od.onset_risk.htn;
+                  const t2d = od.onset_risk.t2d;
+                  const htnColor = htn.ensemble >= 60 ? '#ef4444' : htn.ensemble >= 35 ? '#f59e0b' : '#10b981';
+                  const t2dColor = t2d.ensemble >= 60 ? '#ef4444' : t2d.ensemble >= 35 ? '#f59e0b' : '#10b981';
+                  res.innerHTML = `
+                    <div style="padding:16px;">
+                      <!-- Header -->
+                      <div style="text-align:center;margin-bottom:20px;">
+                        <div style="font-size:0.85rem;color:#64748b;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">
+                          Disease Onset Risk · 3-Model Ensemble
+                        </div>
+                      </div>
+                      <!-- Two risk panels side by side -->
+                      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+                        <!-- HTN Panel -->
+                        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+                          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                            <span style="font-size:1.1rem;">🫀</span>
+                            <span style="font-weight:600;color:#374151;font-size:0.95rem;">Hypertension Risk</span>
+                            <span style="margin-left:auto;font-weight:700;color:${htnColor};font-size:1.1rem;">${htn.ensemble}%</span>
+                          </div>
+                          <div style="font-size:0.8rem;color:#64748b;margin-bottom:8px;">Individual Model Scores</div>
+                          <div style="display:flex;flex-direction:column;gap:4px;font-size:0.82rem;">
+                            <div style="display:flex;justify-content:space-between;">
+                              <span style="color:#64748b;">Lasso LR</span>
+                              <span style="font-weight:600;color:#374151;">${htn.lasso}%</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;">
+                              <span style="color:#64748b;">Random Forest</span>
+                              <span style="font-weight:600;color:#374151;">${htn.random_forest}%</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;">
+                              <span style="color:#64748b;">GradientBoosting</span>
+                              <span style="font-weight:600;color:#374151;">${htn.gradient_boosting}%</span>
+                            </div>
+                          </div>
+                          <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:0.8rem;color:#64748b;">
+                            Range: ${htn.range_min}% – ${htn.range_max}%
+                          </div>
+                        </div>
+                        <!-- T2D Panel -->
+                        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+                          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                            <span style="font-size:1.1rem;">🩸</span>
+                            <span style="font-weight:600;color:#374151;font-size:0.95rem;">Diabetes Risk</span>
+                            <span style="margin-left:auto;font-weight:700;color:${t2dColor};font-size:1.1rem;">${t2d.ensemble}%</span>
+                          </div>
+                          <div style="font-size:0.8rem;color:#64748b;margin-bottom:8px;">Individual Model Scores</div>
+                          <div style="display:flex;flex-direction:column;gap:4px;font-size:0.82rem;">
+                            <div style="display:flex;justify-content:space-between;">
+                              <span style="color:#64748b;">Lasso LR</span>
+                              <span style="font-weight:600;color:#374151;">${t2d.lasso}%</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;">
+                              <span style="color:#64748b;">Random Forest</span>
+                              <span style="font-weight:600;color:#374151;">${t2d.random_forest}%</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;">
+                              <span style="color:#64748b;">GradientBoosting</span>
+                              <span style="font-weight:600;color:#374151;">${t2d.gradient_boosting}%</span>
+                            </div>
+                          </div>
+                          <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:0.8rem;color:#64748b;">
+                            Range: ${t2d.range_min}% – ${t2d.range_max}%
+                          </div>
+                        </div>
+                      </div>
+                      <!-- Interpretation -->
+                      <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:12px;font-size:0.85rem;color:#374151;">
+                        <strong>Note:</strong> These scores show how likely this patient is to develop high blood pressure
+                        or diabetes based on their age, vitals, and visit history. A higher score means the patient
+                        shares more risk factors with patients who were later diagnosed with these conditions.
+                      </div>
+                    </div>`;
+                })
+                .catch(() => {
+                  res.innerHTML = `<div style="text-align:center;padding:20px;color:#ef4444;">Failed to load onset risk data.</div>`;
+                });
+              return;
+            }
+            // pediatric and other errors
+            const icon = d.cohort === 'pediatric' ? '👶' : '⚠️';
             res.innerHTML = `
               <div style="text-align:center;padding:40px 20px;color:#555;">
                 <div style="font-size:2.5rem;margin-bottom:12px;">${icon}</div>
                 <div style="font-size:1.1rem;font-weight:600;margin-bottom:8px;">${d.message || d.error}</div>
                 <div style="font-size:0.85rem;color:#888;">
                   ${d.cohort === 'pediatric' ? 'These models were trained on adult chronic patients only.'
-                    : d.cohort === 'at_risk' ? 'Disease onset models are coming in the next phase.'
                     : 'An unexpected error occurred.'}
                 </div>
               </div>`;
