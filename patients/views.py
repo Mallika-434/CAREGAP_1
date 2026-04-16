@@ -13,6 +13,7 @@ from datetime import timedelta
 from django.db.models import Count, Exists, FloatField, Max, OuterRef, Q, Sum, IntegerField
 from django.db.models.functions import Cast
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
@@ -936,6 +937,118 @@ def patient_onset_risk(request, pk):
         'cohort': patient.cohort,
         'onset_risk': result,
     })
+
+
+@api_view(['GET'])
+def patient_bmi_assessment(request, pk):
+    """GET /api/patients/<id>/bmi-assessment/
+    Returns age-appropriate BMI assessment for pediatric patients.
+    """
+    from datetime import date
+
+    try:
+        patient = Patient.objects.get(patient_id=pk)
+    except Patient.DoesNotExist:
+        return Response({'error': 'Patient not found'}, status=404)
+
+    if patient.cohort != 'pediatric':
+        return Response({
+            'error': 'not_applicable',
+            'message': 'BMI assessment is only available for pediatric patients.',
+            'cohort': patient.cohort,
+        })
+
+    # Get latest BMI observation
+    bmi_obs = patient.observations.filter(
+        code='39156-5'
+    ).order_by('-date').first()
+
+    if not bmi_obs:
+        return Response({
+            'available': False,
+            'message': 'No BMI measurement on record for this patient.',
+        })
+
+    try:
+        bmi = float(bmi_obs.value)
+    except (TypeError, ValueError):
+        return Response({
+            'available': False,
+            'message': 'BMI value could not be read.',
+        })
+
+    age = patient.age or 0
+    gender = patient.gender or 'F'
+
+    # Simplified CDC-based age/gender cutoffs
+    # Boys thresholds are 0.5 higher than girls
+    gender_adj = 0.5 if gender == 'M' else 0.0
+
+    if age <= 5:
+        overweight  = 18.0 + gender_adj
+        obese       = 18.5 + gender_adj
+        underweight = 14.0
+    elif age <= 11:
+        overweight  = 19.0 + gender_adj
+        obese       = 21.0 + gender_adj
+        underweight = 14.5
+    else:
+        overweight  = 22.0 + gender_adj
+        obese       = 25.0 + gender_adj
+        underweight = 16.0
+
+    if bmi < underweight:
+        category  = 'Underweight'
+        color     = 'blue'
+        recommend = 'Refer to pediatric nutritionist. Monitor weight gain.'
+    elif bmi < overweight:
+        category  = 'Healthy Weight'
+        color     = 'green'
+        recommend = 'Continue routine monitoring. Encourage physical activity.'
+    elif bmi < obese:
+        category  = 'Overweight'
+        color     = 'amber'
+        recommend = 'Recommend dietary review and increased physical activity.'
+    else:
+        category  = 'Obese'
+        color     = 'red'
+        recommend = 'Refer to pediatric specialist. Discuss lifestyle intervention.'
+
+    return Response({
+        'available':  True,
+        'patient_id': str(patient.patient_id),
+        'name':       f"{patient.first} {patient.last}",
+        'age':        age,
+        'gender':     gender,
+        'bmi':        round(bmi, 1),
+        'category':   category,
+        'color':      color,
+        'recommend':  recommend,
+        'thresholds': {
+            'underweight': underweight,
+            'overweight':  overweight,
+            'obese':       obese,
+        }
+    })
+
+
+@api_view(['POST'])
+@csrf_exempt
+def explain_result(request):
+    """POST /api/rag/explain/
+    Generates a plain English explanation of a patient result using Gemini.
+    Body: { explanation_type, patient_data }
+    """
+    from rag.pipeline import rag_pipeline
+
+    explanation_type = request.data.get('explanation_type')
+    patient_data     = request.data.get('patient_data', {})
+
+    if not explanation_type:
+        return Response({'error': 'explanation_type required'}, status=400)
+
+    result = rag_pipeline.explain_patient_result(explanation_type, patient_data)
+    return Response(result)
 
 
 # ── 8. Triage Dashboard (Emergency / Urgent Care) ─────────────────
