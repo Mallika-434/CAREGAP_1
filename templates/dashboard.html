@@ -1288,6 +1288,7 @@
           <div class="tab" onclick="showTab('trends',this)">📈 Trends</div>
           <div class="tab" onclick="showTab('urgentcare',this)">🏥 Urgent Care</div>
           <div class="tab" onclick="showTab('history',this)">📋 History</div>
+          <div class="tab" onclick="showTab('ai',this)">🤖 AI Suggestions</div>
         </div>
 
         <!-- Tab: Risk -->
@@ -1386,6 +1387,65 @@
               <div class="empty" style="padding:24px">
                 <p>Loading…</p>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Suggestions Tab -->
+        <div id="tab-ai" class="tab-panel" style="display:none;">
+          <div style="padding:20px;">
+            <div style="margin-bottom:16px;">
+              <div style="font-size:1rem;font-weight:600;color:#0f172a;margin-bottom:4px;">
+                🤖 AI Clinical Suggestions
+              </div>
+              <div style="font-size:0.85rem;color:#64748b;">
+                Ask a question about this patient and get evidence-based lifestyle and clinical suggestions.
+              </div>
+            </div>
+            <!-- Input area -->
+            <div style="display:flex;gap:8px;margin-bottom:16px;">
+              <input id="rag-input"
+                type="text"
+                placeholder="e.g. What lifestyle changes should this patient make?"
+                style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;
+                       font-size:0.9rem;outline:none;color:#0f172a;"
+                onkeydown="if(event.key==='Enter') sendRagQuery()"
+              />
+              <button onclick="sendRagQuery()"
+                style="padding:10px 20px;background:#0d9488;color:white;border:none;
+                       border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;">
+                Ask
+              </button>
+            </div>
+            <!-- Quick question chips -->
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+              <button onclick="setRagQuestion('What lifestyle changes should this patient make?')"
+                style="padding:6px 12px;background:#f0fdfa;border:1px solid #99f6e4;
+                       border-radius:20px;font-size:0.8rem;color:#0d9488;cursor:pointer;">
+                Lifestyle changes
+              </button>
+              <button onclick="setRagQuestion('What diet recommendations do you have for this patient?')"
+                style="padding:6px 12px;background:#f0fdfa;border:1px solid #99f6e4;
+                       border-radius:20px;font-size:0.8rem;color:#0d9488;cursor:pointer;">
+                Diet advice
+              </button>
+              <button onclick="setRagQuestion('What exercise plan is suitable for this patient?')"
+                style="padding:6px 12px;background:#f0fdfa;border:1px solid #99f6e4;
+                       border-radius:20px;font-size:0.8rem;color:#0d9488;cursor:pointer;">
+                Exercise plan
+              </button>
+              <button onclick="setRagQuestion('How can this patient manage their stress better?')"
+                style="padding:6px 12px;background:#f0fdfa;border:1px solid #99f6e4;
+                       border-radius:20px;font-size:0.8rem;color:#0d9488;cursor:pointer;">
+                Stress management
+              </button>
+            </div>
+            <!-- Response area -->
+            <div id="rag-response" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;
+              border-radius:12px;padding:16px;font-size:0.88rem;color:#374151;line-height:1.7;">
+            </div>
+            <div id="rag-loading" style="display:none;text-align:center;padding:20px;color:#64748b;font-size:0.88rem;">
+              ⏳ Getting AI suggestions...
             </div>
           </div>
         </div>
@@ -1625,6 +1685,7 @@
 
     // ─── State ───
     let currentPatientId = null;
+    let currentPatientData = null;
     // ─── Infinite-scroll directory state ───
     const PAGE_SIZE = 50;
     let dirState = { query: '', cohort: '', offset: 0, total: 0, loading: false, exhausted: false };
@@ -1674,7 +1735,7 @@
     }
 
     function showTab(id, el) {
-      document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+      document.querySelectorAll('.tab-content, .tab-panel').forEach(t => t.style.display = 'none');
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.getElementById('tab-' + id).style.display = 'block';
       el.classList.add('active');
@@ -1821,6 +1882,7 @@
 
       const profile = await profileRes.json();
       const risk = await riskRes.json();
+      currentPatientData = profile;
 
       document.getElementById('nav-profile-name').textContent = `${profile.first} ${profile.last}`;
 
@@ -1909,8 +1971,38 @@
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
           ${urgentCareBtn}
           <button class="btn btn-outline" onclick="runPredictionForPatient('${risk.patient_id}')">
-            &#x1F4CA; Run 6-Month Prediction
+            &#x1F4CA; ${profile.cohort === 'pediatric' ? 'Check Healthy Weight' : 'Run 6-Month Prediction'}
           </button>
+          ${profile.cohort === 'pediatric' ? `
+          <span onmouseenter="document.getElementById('peds-tip').style.display='block'"
+                onmouseleave="document.getElementById('peds-tip').style.display='none'"
+                style="position:relative;display:inline-flex;align-items:center;justify-content:center;
+                width:18px;height:18px;border-radius:50%;background:#e0f2fe;color:#0284c7;
+                font-size:11px;font-weight:700;cursor:pointer;border:1px solid #bae6fd;
+                margin-left:8px;vertical-align:middle;">i
+            <div id="peds-tip" style="display:none;position:absolute;bottom:24px;left:50%;
+              transform:translateX(-50%);background:#0f172a;color:white;font-size:0.75rem;
+              padding:8px 12px;border-radius:8px;width:220px;text-align:center;z-index:100;
+              line-height:1.4;pointer-events:none;">
+              This tool does not use the same prediction models as adult patients. Instead, it checks
+              if this child's weight is healthy for their age and gender using standard growth guidelines.
+            </div>
+          </span>` : ''}
+          ${profile.cohort !== 'pediatric' ? `
+          <span onmouseenter="document.getElementById('pred-tip').style.display='block'"
+                onmouseleave="document.getElementById('pred-tip').style.display='none'"
+                style="position:relative;display:inline-flex;align-items:center;justify-content:center;
+                width:18px;height:18px;border-radius:50%;background:#e0f2fe;color:#0284c7;
+                font-size:11px;font-weight:700;cursor:pointer;border:1px solid #bae6fd;
+                margin-left:8px;vertical-align:middle;">i
+            <div id="pred-tip" style="display:none;position:absolute;bottom:24px;left:50%;
+              transform:translateX(-50%);background:#0f172a;color:white;font-size:0.75rem;
+              padding:8px 12px;border-radius:8px;width:230px;text-align:center;z-index:100;
+              line-height:1.4;pointer-events:none;">
+              This runs three machine learning models at the same time and combines their results
+              to predict how likely this patient is to get worse over the next 6 months.
+            </div>
+          </span>` : ''}
         </div>
       </div>
     </div>
@@ -2823,6 +2915,58 @@
                         shares more risk factors with patients who were later diagnosed with these conditions.
                       </div>
                     </div>`;
+
+                  // Explain button for onset risk
+                  const explainBtnAR = document.createElement('button');
+                  explainBtnAR.id = 'explain-btn-ar';
+                  explainBtnAR.textContent = '💬 Explain This in Simple Words';
+                  explainBtnAR.style.cssText = 'margin:12px 16px 0;padding:10px 18px;background:#f0fdfa;border:1.5px solid #0d9488;color:#0d9488;border-radius:8px;font-size:0.88rem;font-weight:600;cursor:pointer;width:calc(100% - 32px);';
+                  explainBtnAR.onclick = function() {
+                    explainBtnAR.textContent = '⏳ Generating explanation...';
+                    explainBtnAR.disabled = true;
+                    const htn = od.onset_risk.htn;
+                    const t2d = od.onset_risk.t2d;
+                    const f   = od.onset_risk.features || {};
+                    const patientData = {
+                      name:                 od.name || '',
+                      age:                  f.age || '',
+                      htn_ensemble:         htn.ensemble,
+                      htn_lasso:            htn.lasso,
+                      htn_rf:               htn.random_forest,
+                      htn_gb:               htn.gradient_boosting,
+                      t2d_ensemble:         t2d.ensemble,
+                      t2d_lasso:            t2d.lasso,
+                      t2d_rf:               t2d.random_forest,
+                      t2d_gb:               t2d.gradient_boosting,
+                      sbp:                  f.latest_sbp || '',
+                      bmi:                  f.latest_bmi || '',
+                      days_since_encounter: f.days_since_last_encounter || '',
+                    };
+                    fetch('/api/rag/explain/', {
+                      method: 'POST',
+                      headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+                      body: JSON.stringify({explanation_type: 'onset_risk', patient_data: patientData})
+                    })
+                    .then(r => r.json())
+                    .then(ed => {
+                      const box = document.getElementById('explain-box-ar');
+                      if (box) {
+                        box.style.display = 'block';
+                        box.innerHTML = `<strong>💬 Summary:</strong><br><br>${ed.explanation || 'No explanation available.'}`;
+                      }
+                      explainBtnAR.textContent = '💬 Explain This in Simple Words';
+                      explainBtnAR.disabled = false;
+                    })
+                    .catch(() => {
+                      explainBtnAR.textContent = '💬 Explain This in Simple Words';
+                      explainBtnAR.disabled = false;
+                    });
+                  };
+                  res.appendChild(explainBtnAR);
+                  const explainBoxAR = document.createElement('div');
+                  explainBoxAR.id = 'explain-box-ar';
+                  explainBoxAR.style.cssText = 'display:none;margin:8px 16px 16px;padding:14px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;font-size:0.85rem;color:#374151;line-height:1.6;';
+                  res.appendChild(explainBoxAR);
                 })
                 .catch(() => {
                   res.innerHTML = `<div style="text-align:center;padding:20px;color:#ef4444;">Failed to load onset risk data.</div>`;
@@ -2830,15 +2974,103 @@
               return;
             }
             // pediatric and other errors
-            const icon = d.cohort === 'pediatric' ? '👶' : '⚠️';
+            if (d.cohort === 'pediatric') {
+              res.innerHTML = `<div style="text-align:center;padding:30px;color:#888;">
+                <div style="font-size:1.5rem;margin-bottom:8px;">👶</div>
+                <div>Loading BMI assessment...</div>
+              </div>`;
+              fetch(`/api/patients/${id}/bmi-assessment/`)
+                .then(r => r.json())
+                .then(bd => {
+                  if (!bd.available) {
+                    res.innerHTML = `
+                      <div style="text-align:center;padding:40px 20px;color:#555;">
+                        <div style="font-size:2.5rem;margin-bottom:12px;">👶</div>
+                        <div style="font-size:1.1rem;font-weight:600;margin-bottom:8px;">${bd.message || 'No BMI data available'}</div>
+                      </div>`;
+                    return;
+                  }
+                  const colorMap = {green:'#10b981', amber:'#f59e0b', red:'#ef4444', blue:'#3b82f6'};
+                  const badgeColor = colorMap[bd.color] || '#64748b';
+                  res.innerHTML = `
+                    <div style="padding:16px;">
+                      <div style="text-align:center;margin-bottom:20px;">
+                        <div style="font-size:0.85rem;color:#64748b;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">
+                          Pediatric BMI Assessment
+                        </div>
+                      </div>
+                      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;text-align:center;">
+                          <div style="font-size:0.8rem;color:#64748b;margin-bottom:6px;">BMI</div>
+                          <div style="font-size:2rem;font-weight:700;color:#0f172a;">${bd.bmi}</div>
+                          <div style="font-size:0.75rem;color:#94a3b8;margin-top:4px;">kg/m²</div>
+                        </div>
+                        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;text-align:center;">
+                          <div style="font-size:0.8rem;color:#64748b;margin-bottom:6px;">Category</div>
+                          <div style="font-size:1.2rem;font-weight:700;color:${badgeColor};">${bd.category}</div>
+                          <div style="font-size:0.75rem;color:#94a3b8;margin-top:4px;">${bd.age} years · ${bd.gender === 'M' ? 'Male' : 'Female'}</div>
+                        </div>
+                      </div>
+                      <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:12px;font-size:0.85rem;color:#374151;">
+                        <strong>Recommendation:</strong> ${bd.recommend}
+                      </div>
+                      <div style="margin-top:10px;font-size:0.78rem;color:#94a3b8;text-align:center;">
+                        Thresholds for age ${bd.age} · Overweight >= ${bd.thresholds.overweight} · Obese >= ${bd.thresholds.obese}
+                      </div>
+                    </div>`;
+
+                  // Explain button for BMI assessment
+                  const explainBtnPed = document.createElement('button');
+                  explainBtnPed.id = 'explain-btn-ped';
+                  explainBtnPed.textContent = '💬 Explain This in Simple Words';
+                  explainBtnPed.style.cssText = 'margin:12px 16px 0;padding:10px 18px;background:#f0fdfa;border:1.5px solid #0d9488;color:#0d9488;border-radius:8px;font-size:0.88rem;font-weight:600;cursor:pointer;width:calc(100% - 32px);';
+                  explainBtnPed.onclick = function() {
+                    explainBtnPed.textContent = '⏳ Generating explanation...';
+                    explainBtnPed.disabled = true;
+                    const patientData = {
+                      name:           bd.name || '',
+                      age:            bd.age || '',
+                      gender:         bd.gender === 'M' ? 'Male' : 'Female',
+                      bmi:            bd.bmi,
+                      category:       bd.category,
+                      recommendation: bd.recommend,
+                    };
+                    fetch('/api/rag/explain/', {
+                      method: 'POST',
+                      headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+                      body: JSON.stringify({explanation_type: 'bmi_assessment', patient_data: patientData})
+                    })
+                    .then(r => r.json())
+                    .then(ed => {
+                      const box = document.getElementById('explain-box-ped');
+                      if (box) {
+                        box.style.display = 'block';
+                        box.innerHTML = `<strong>💬 Summary:</strong><br><br>${ed.explanation || 'No explanation available.'}`;
+                      }
+                      explainBtnPed.textContent = '💬 Explain This in Simple Words';
+                      explainBtnPed.disabled = false;
+                    })
+                    .catch(() => {
+                      explainBtnPed.textContent = '💬 Explain This in Simple Words';
+                      explainBtnPed.disabled = false;
+                    });
+                  };
+                  res.appendChild(explainBtnPed);
+                  const explainBoxPed = document.createElement('div');
+                  explainBoxPed.id = 'explain-box-ped';
+                  explainBoxPed.style.cssText = 'display:none;margin:8px 16px 16px;padding:14px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;font-size:0.85rem;color:#374151;line-height:1.6;';
+                  res.appendChild(explainBoxPed);
+                })
+                .catch(() => {
+                  res.innerHTML = `<div style="text-align:center;padding:20px;color:#ef4444;">Failed to load BMI assessment.</div>`;
+                });
+              return;
+            }
             res.innerHTML = `
               <div style="text-align:center;padding:40px 20px;color:#555;">
-                <div style="font-size:2.5rem;margin-bottom:12px;">${icon}</div>
+                <div style="font-size:2.5rem;margin-bottom:12px;">⚠️</div>
                 <div style="font-size:1.1rem;font-weight:600;margin-bottom:8px;">${d.message || d.error}</div>
-                <div style="font-size:0.85rem;color:#888;">
-                  ${d.cohort === 'pediatric' ? 'These models were trained on adult chronic patients only.'
-                    : 'An unexpected error occurred.'}
-                </div>
+                <div style="font-size:0.85rem;color:#888;">An unexpected error occurred.</div>
               </div>`;
             return;
           }
@@ -2982,6 +3214,63 @@
                 Confidence: ${d.confidence || '—'}
               </span>
             </div>`;
+
+          // Wrap button and box in a two-column layout next to the recommendation
+          const explainWrapper = document.createElement('div');
+          explainWrapper.style.cssText = 'padding:0 16px 16px;';
+          explainWrapper.innerHTML = `
+            <button id="explain-btn"
+              style="width:100%;padding:10px 18px;background:#f0fdfa;border:1.5px solid #0d9488;
+              color:#0d9488;border-radius:8px;font-size:0.88rem;font-weight:600;cursor:pointer;">
+              💬 Explain This in Simple Words
+            </button>
+            <div id="explain-box" style="display:none;margin-top:10px;padding:14px;
+              background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;
+              font-size:0.85rem;color:#374151;line-height:1.7;">
+            </div>`;
+          res.appendChild(explainWrapper);
+
+          document.getElementById('explain-btn').onclick = function() {
+            const explainBtn = document.getElementById('explain-btn');
+            explainBtn.textContent = '⏳ Generating...';
+            explainBtn.disabled = true;
+            const patientData = {
+              name: d.patient_name || '',
+              age: d.features ? d.features.age : '',
+              gender: d.features ? (d.features.gender_m ? 'Male' : 'Female') : '',
+              conditions: d.features ? (d.features.has_diabetes && d.features.has_hypertension ? 'Diabetes and Hypertension' : d.features.has_diabetes ? 'Diabetes' : d.features.has_hypertension ? 'Hypertension' : 'None recorded') : '',
+              hba1c: d.features ? d.features.latest_hba1c : '',
+              sbp: d.features ? d.features.latest_sbp : '',
+              risk_score: d.risk_score || '',
+              risk_label: d.risk_label || '',
+              ensemble_pct: d.progression_probability ? Math.round(d.progression_probability * 100) : '',
+              lasso_pct: d.model_scores ? Math.round((d.model_scores.Lasso || 0) * 100) : '',
+              rf_pct: d.model_scores ? Math.round((d.model_scores['Random Forest'] || 0) * 100) : '',
+              gb_pct: d.model_scores ? Math.round((d.model_scores.GradientBoosting || 0) * 100) : '',
+              sugar_risk: d.sugar_risk || '',
+              bp_risk: d.bp_risk || '',
+              recommendation: d.recommendation || '',
+            };
+            fetch('/api/rag/explain/', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+              body: JSON.stringify({explanation_type: 'chronic_prediction', patient_data: patientData})
+            })
+            .then(r => r.json())
+            .then(ed => {
+              const box = document.getElementById('explain-box');
+              if (box) {
+                box.style.display = 'block';
+                box.innerHTML = `<strong>💬 Summary:</strong><br><br>${ed.explanation || 'No explanation available.'}`;
+              }
+              explainBtn.textContent = '💬 Explain This in Simple Words';
+              explainBtn.disabled = false;
+            })
+            .catch(() => {
+              explainBtn.textContent = '💬 Explain This in Simple Words';
+              explainBtn.disabled = false;
+            });
+          };
         })
         .catch(err => { res.innerHTML = `<div style="color:#ef4444;padding:12px">Error — check patient ID (${err})</div>`; });
     }
@@ -3037,6 +3326,67 @@
 
     // ─── Init ───
     // (loadAllPatients is called from DOMContentLoaded above)
+
+    function setRagQuestion(q) {
+      document.getElementById('rag-input').value = q;
+      sendRagQuery();
+    }
+
+    function sendRagQuery() {
+      const input    = document.getElementById('rag-input');
+      const response = document.getElementById('rag-response');
+      const loading  = document.getElementById('rag-loading');
+      const question = input.value.trim();
+
+      if (!question) return;
+      if (!currentPatientId) return;
+
+      response.style.display = 'none';
+      loading.style.display  = 'block';
+
+      // Build patient profile from current patient data
+      const profile = {
+        patient_id:       currentPatientId,
+        question:         question,
+        name:             currentPatientData ? currentPatientData.first + ' ' + currentPatientData.last : '',
+        age:              currentPatientData ? currentPatientData.age : null,
+        gender:           currentPatientData ? currentPatientData.gender : null,
+        has_diabetes:     currentPatientData ? currentPatientData.has_diabetes : false,
+        has_hypertension: currentPatientData ? currentPatientData.has_hypertension : false,
+        hba1c_value:      currentPatientData ? currentPatientData.latest_hba1c : null,
+        latest_sbp:       currentPatientData ? currentPatientData.latest_sbp : null,
+      };
+
+      fetch('/api/rag/suggest/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(profile)
+      })
+      .then(r => r.json())
+      .then(data => {
+        loading.style.display  = 'none';
+        response.style.display = 'block';
+        const text = data.suggestions || data.error || 'No suggestions available.';
+        // Format bullet points nicely
+        const formatted = text
+          .replace(/•\s\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+          .replace(/•/g, '<br><br>•')
+          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        response.innerHTML = `
+          <div style="font-size:0.8rem;color:#64748b;margin-bottom:10px;">
+            Source: ${data.model || 'AI'}
+          </div>
+          ${formatted}`;
+      })
+      .catch(() => {
+        loading.style.display  = 'none';
+        response.style.display = 'block';
+        response.innerHTML = '<span style="color:#ef4444;">Failed to get suggestions. Please try again.</span>';
+      });
+    }
   </script>
 </body>
 

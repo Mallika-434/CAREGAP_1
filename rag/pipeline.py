@@ -287,26 +287,165 @@ class RAGPipeline:
         # Step 3: Build prompt
         prompt = _build_prompt(patient_profile, context)
 
-        # Step 4: Call HuggingFace Inference API; fall back to rule-based
-        hf_token = getattr(settings, 'HF_API_TOKEN', '')
-        if hf_token:
+        # Step 4: Try Ollama first (local, free, no rate limits)
+        ollama_url = os.environ.get('OLLAMA_URL', 'http://localhost:11434')
+        try:
+            resp = requests.post(
+                f'{ollama_url}/api/generate',
+                json={
+                    'model': os.environ.get('OLLAMA_MODEL', 'phi3:latest'),
+                    'prompt': prompt,
+                    'stream': False,
+                },
+                timeout=180
+            )
+            if resp.status_code == 200:
+                text = resp.json().get('response', '').strip()
+                if text:
+                    return {
+                        'query':        query,
+                        'context_used': [c.get('id') for c in chunks],
+                        'suggestions':  text,
+                        'model':        'ollama-qwen3.5',
+                    }
+        except Exception as e:
+            logger.warning("Ollama RAG call failed: %s", e)
+
+        # Fallback to Gemini if Ollama unavailable
+        gemini_key = os.environ.get('GEMINI_API_KEY') or getattr(settings, 'GEMINI_API_KEY', None)
+        if gemini_key:
             try:
-                suggestions_text = _call_huggingface(prompt, hf_token)
-                model_used = 'mistralai/Mistral-7B-Instruct-v0.2'
+                url = (
+                    "https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"gemini-2.0-flash-lite:generateContent?key={gemini_key}"
+                )
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"maxOutputTokens": 400, "temperature": 0.3},
+                }
+                resp = requests.post(url, json=payload, timeout=15)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    text = data['candidates'][0]['content']['parts'][0]['text']
+                    return {
+                        'query':        query,
+                        'context_used': [c.get('id') for c in chunks],
+                        'suggestions':  text.strip(),
+                        'model':        'gemini-fallback',
+                    }
             except Exception as e:
-                logger.warning("HF API call failed (%s) — using rule-based fallback", e)
-                suggestions_text = _rule_based_suggestions(patient_profile)
-                model_used = 'rule-based-fallback'
-        else:
-            suggestions_text = _rule_based_suggestions(patient_profile)
-            model_used = 'rule-based-fallback'
+                logger.warning("Gemini RAG call failed: %s", e)
 
         return {
             'query':        query,
             'context_used': [c.get('id') for c in chunks],
-            'suggestions':  suggestions_text,
-            'model':        model_used,
+            'suggestions':  _rule_based_suggestions(patient_profile),
+            'model':        'rule-based-fallback',
         }
+
+    def explain_patient_result(self, explanation_type: str, patient_data: dict) -> dict:
+        """Generate a plain English explanation of a patient result using Gemini.
+        explanation_type: 'chronic_prediction', 'onset_risk', 'bmi_assessment'
+        """
+        if explanation_type == 'chronic_prediction':
+            prompt = f"""You are explaining a patient risk result to a care coordinator.
+Write exactly 3 bullet points. Each bullet is one short sentence. No headers. No paragraphs. No extra text before or after the bullets.
+
+Patient: {patient_data.get('name')}, {patient_data.get('age')} years old
+Conditions: {patient_data.get('conditions', 'None')}
+HbA1c: {patient_data.get('hba1c', 'Not tested')}
+Systolic BP: {patient_data.get('sbp')} mmHg
+ML prediction: {patient_data.get('ensemble_pct')}% risk
+Recommendation: {patient_data.get('recommendation')}
+
+Write 3 bullets covering: (1) what the numbers mean, (2) what the risk score means, (3) what the coordinator should do next."""
+
+        elif explanation_type == 'onset_risk':
+            prompt = f"""You are a friendly healthcare assistant explaining disease onset risk to a care coordinator.
+Explain this in 3-4 simple sentences a non-medical person can understand. Be specific to these numbers.
+Use 3 short bullet points maximum. Each bullet is one sentence. No jargon. No long paragraphs.
+
+Patient: {patient_data.get('name')}, {patient_data.get('age')} years old
+HTN onset risk: {patient_data.get('htn_ensemble')}% (Lasso: {patient_data.get('htn_lasso')}%, RF: {patient_data.get('htn_rf')}%, GB: {patient_data.get('htn_gb')}%)
+T2D onset risk: {patient_data.get('t2d_ensemble')}% (Lasso: {patient_data.get('t2d_lasso')}%, RF: {patient_data.get('t2d_rf')}%, GB: {patient_data.get('t2d_gb')}%)
+Current SBP: {patient_data.get('sbp')} mmHg, BMI: {patient_data.get('bmi')}
+Engagement: {patient_data.get('days_since_encounter')} days since last visit
+
+Explain what these scores mean and what the care coordinator should do next."""
+
+        elif explanation_type == 'bmi_assessment':
+            prompt = f"""You are a friendly healthcare assistant explaining a child's BMI result to a care coordinator.
+Explain this in 2-3 simple sentences a non-medical person can understand. Be warm and reassuring where appropriate.
+Use 3 short bullet points maximum. Each bullet is one sentence. No jargon. No long paragraphs.
+
+Patient: {patient_data.get('name')}, {patient_data.get('age')} years old, {patient_data.get('gender')}
+BMI: {patient_data.get('bmi')}
+Category: {patient_data.get('category')}
+Recommendation: {patient_data.get('recommendation')}
+
+Explain what this BMI result means for this child in plain English."""
+
+        else:
+            return {"explanation": "No explanation available.", "source": "none"}
+
+        # Try Ollama first
+        ollama_url = os.environ.get('OLLAMA_URL', 'http://localhost:11434')
+        try:
+            resp = requests.post(
+                f'{ollama_url}/api/generate',
+                json={
+                    'model': os.environ.get('OLLAMA_MODEL', 'phi3:latest'),
+                    'prompt': prompt,
+                    'stream': False,
+                },
+                timeout=180
+            )
+            if resp.status_code == 200:
+                text = resp.json().get('response', '').strip()
+                if text:
+                    return {"explanation": text, "source": "ollama-qwen3.5"}
+        except Exception as e:
+            logger.warning("Ollama explain call failed: %s", e)
+
+        # Fallback to Gemini
+        gemini_key = os.environ.get('GEMINI_API_KEY') or getattr(settings, 'GEMINI_API_KEY', None)
+        if gemini_key:
+            try:
+                url = (
+                    "https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"gemini-2.0-flash-lite:generateContent?key={gemini_key}"
+                )
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"maxOutputTokens": 300, "temperature": 0.4},
+                }
+                resp = requests.post(url, json=payload, timeout=15)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    text = data['candidates'][0]['content']['parts'][0]['text']
+                    return {"explanation": text.strip(), "source": "gemini"}
+            except Exception as e:
+                logger.warning("Gemini explain call failed: %s", e)
+
+        return {"explanation": self._rule_based_explanation(explanation_type, patient_data), "source": "rule_based"}
+
+    def _rule_based_explanation(self, explanation_type: str, patient_data: dict) -> str:
+        """Fallback explanation when Gemini is unavailable."""
+        if explanation_type == 'chronic_prediction':
+            pct = patient_data.get('ensemble_pct', 0)
+            if pct >= 60:
+                return "This patient has a high chance of getting worse in the next 6 months. Immediate follow-up is recommended."
+            elif pct >= 35:
+                return "This patient has a moderate chance of deterioration. Schedule a follow-up visit soon."
+            else:
+                return "This patient appears stable. Continue the current care plan and monitor regularly."
+        elif explanation_type == 'onset_risk':
+            htn = patient_data.get('htn_ensemble', 0)
+            t2d = patient_data.get('t2d_ensemble', 0)
+            return f"This patient has a {htn}% risk profile for hypertension and {t2d}% for diabetes based on their current health indicators."
+        elif explanation_type == 'bmi_assessment':
+            return f"This child's BMI of {patient_data.get('bmi')} is classified as {patient_data.get('category')}. {patient_data.get('recommendation')}"
+        return "No explanation available."
 
 
 def _build_prompt(profile: dict, context: str) -> str:
@@ -342,14 +481,14 @@ CLINICAL GUIDELINES CONTEXT (retrieved)
 
 TASK
 ────
-Based on the patient profile and the clinical context above, provide 4-6 specific, \
-actionable, and personalized lifestyle habit recommendations for this patient. \
-Format each recommendation with:
-  • A short title (bold)
-  • 2-3 sentences of practical guidance tailored to this patient's specific values
-
-Be warm, encouraging, and avoid medical jargon. Do not recommend medications or diagnoses. \
-Focus on diet, exercise, sleep, stress management, and monitoring habits.
+Give exactly 4 lifestyle recommendations for this patient.
+Format: one line per recommendation, starting with a bold title like **Title:** followed by one sentence only.
+No paragraphs. No extra explanation. No follow-up questions. No repetition.
+Example format:
+**Exercise:** Walk 30 minutes daily to lower blood pressure.
+**Diet:** Follow DASH diet focusing on fruits, vegetables and low sodium foods.
+**Sleep:** Aim for 7-9 hours nightly to support cardiovascular health.
+**Stress:** Practice deep breathing for 10 minutes daily to reduce cortisol levels.
 """
 
 

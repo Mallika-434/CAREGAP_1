@@ -699,13 +699,18 @@ def predict_multi_hba1c_trajectory(observations):
     rf_val  = _quadratic_projection(hba1c_obs, max_n=5)
     xgb_val = _weighted_projection(hba1c_obs,  max_n=5)
 
-    return {
+    result = {
         'lasso': lasso_val,
         'rf':    rf_val,
         'xgb':   xgb_val,
         'trend': trend,
         'slope': round(slope, 5),
     }
+    # Clamp HbA1c projections to physiological range (3.0-15.0%)
+    for key in ['lasso', 'rf', 'xgb']:
+        if result.get(key) is not None:
+            result[key] = max(3.0, min(15.0, float(result[key])))
+    return result
 
 
 def predict_multi_sbp_trajectory(observations):
@@ -735,13 +740,18 @@ def predict_multi_sbp_trajectory(observations):
                                  improving_threshold=2)
     xgb_val = _weighted_projection(sbp_obs, max_n=5)
 
-    return {
+    result = {
         'lasso': lasso_val,
         'rf':    rf_val,
         'xgb':   xgb_val,
         'trend': trend,
         'slope': round(slope, 5),
     }
+    # Clamp SBP projections to physiological range (60-220 mmHg)
+    for key in ['lasso', 'rf', 'xgb']:
+        if result.get(key) is not None:
+            result[key] = max(60.0, min(220.0, float(result[key])))
+    return result
 
 
 # ── legacy single-trajectory wrappers (kept for backward compat) ─────────────
