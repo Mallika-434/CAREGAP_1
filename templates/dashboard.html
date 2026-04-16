@@ -2952,7 +2952,12 @@
                       const box = document.getElementById('explain-box-ar');
                       if (box) {
                         box.style.display = 'block';
-                        box.innerHTML = `<strong>💬 Summary:</strong><br><br>${ed.explanation || 'No explanation available.'}`;
+                        const cleanText = (ed.explanation || 'No explanation available.')
+                          .replace(/-\s*-\s*/g, '')
+                          .replace(/\n-\s*/g, '<br><br>- ')
+                          .replace(/\s+-\s+/g, '<br><br>- ')
+                          .replace(/^-\s*/g, '- ');
+                        box.innerHTML = `<strong>💬 Summary:</strong><br><br>${cleanText}`;
                       }
                       explainBtnAR.textContent = '💬 Explain This in Simple Words';
                       explainBtnAR.disabled = false;
@@ -3045,7 +3050,12 @@
                       const box = document.getElementById('explain-box-ped');
                       if (box) {
                         box.style.display = 'block';
-                        box.innerHTML = `<strong>💬 Summary:</strong><br><br>${ed.explanation || 'No explanation available.'}`;
+                        const cleanText = (ed.explanation || 'No explanation available.')
+                          .replace(/-\s*-\s*/g, '')
+                          .replace(/\n-\s*/g, '<br><br>- ')
+                          .replace(/\s+-\s+/g, '<br><br>- ')
+                          .replace(/^-\s*/g, '- ');
+                        box.innerHTML = `<strong>💬 Summary:</strong><br><br>${cleanText}`;
                       }
                       explainBtnPed.textContent = '💬 Explain This in Simple Words';
                       explainBtnPed.disabled = false;
@@ -3261,7 +3271,12 @@
               const box = document.getElementById('explain-box');
               if (box) {
                 box.style.display = 'block';
-                box.innerHTML = `<strong>💬 Summary:</strong><br><br>${ed.explanation || 'No explanation available.'}`;
+                const cleanText = (ed.explanation || 'No explanation available.')
+                  .replace(/-\s*-\s*/g, '')
+                  .replace(/\n-\s*/g, '<br><br>- ')
+                  .replace(/\s+-\s+/g, '<br><br>- ')
+                  .replace(/^-\s*/g, '- ');
+                box.innerHTML = `<strong>💬 Summary:</strong><br><br>${cleanText}`;
               }
               explainBtn.textContent = '💬 Explain This in Simple Words';
               explainBtn.disabled = false;
@@ -3372,9 +3387,10 @@
         const text = data.suggestions || data.error || 'No suggestions available.';
         // Format bullet points nicely
         const formatted = text
-          .replace(/•\s\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-          .replace(/•/g, '<br><br>•')
-          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+          .replace(/•\s*/g, '<br><br>• ')
+          .replace(/\.\s+(?=[A-Z\*])/g, '.<br><br>')
+          .trimStart();
         response.innerHTML = `
           <div style="font-size:0.8rem;color:#64748b;margin-bottom:10px;">
             Source: ${data.model || 'AI'}

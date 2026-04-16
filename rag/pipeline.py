@@ -348,42 +348,44 @@ class RAGPipeline:
         explanation_type: 'chronic_prediction', 'onset_risk', 'bmi_assessment'
         """
         if explanation_type == 'chronic_prediction':
-            prompt = f"""You are explaining a patient risk result to a care coordinator.
-Write exactly 3 bullet points. Each bullet is one short sentence. No headers. No paragraphs. No extra text before or after the bullets.
+            risk_level = 'HIGH' if (patient_data.get('ensemble_pct') or 0) >= 60 else 'MODERATE' if (patient_data.get('ensemble_pct') or 0) >= 35 else 'LOW'
 
-Patient: {patient_data.get('name')}, {patient_data.get('age')} years old
-Conditions: {patient_data.get('conditions', 'None')}
-HbA1c: {patient_data.get('hba1c', 'Not tested')}
-Systolic BP: {patient_data.get('sbp')} mmHg
-ML prediction: {patient_data.get('ensemble_pct')}% risk
-Recommendation: {patient_data.get('recommendation')}
+            prompt = f"""RESPOND WITH EXACTLY 3 LINES. Each line starts with "- ". No other text.
 
-Write 3 bullets covering: (1) what the numbers mean, (2) what the risk score means, (3) what the coordinator should do next."""
+Line 1: What {patient_data.get('name')}'s HbA1c of {patient_data.get('hba1c') or 'not tested'} and BP of {patient_data.get('sbp')} mmHg means.
+Line 2: What {risk_level} risk ({patient_data.get('ensemble_pct')}%) means for this patient.
+Line 3: What the care coordinator should do: {patient_data.get('recommendation')}.
+
+START YOUR RESPONSE WITH "- " AND NOTHING ELSE."""
 
         elif explanation_type == 'onset_risk':
-            prompt = f"""You are a friendly healthcare assistant explaining disease onset risk to a care coordinator.
-Explain this in 3-4 simple sentences a non-medical person can understand. Be specific to these numbers.
-Use 3 short bullet points maximum. Each bullet is one sentence. No jargon. No long paragraphs.
+            prompt = f"""You are a clinical assistant. Write exactly 3 bullet points. Each bullet starts with a dash on a new line. One sentence per bullet. No extra text before or after.
 
-Patient: {patient_data.get('name')}, {patient_data.get('age')} years old
-HTN onset risk: {patient_data.get('htn_ensemble')}% (Lasso: {patient_data.get('htn_lasso')}%, RF: {patient_data.get('htn_rf')}%, GB: {patient_data.get('htn_gb')}%)
-T2D onset risk: {patient_data.get('t2d_ensemble')}% (Lasso: {patient_data.get('t2d_lasso')}%, RF: {patient_data.get('t2d_rf')}%, GB: {patient_data.get('t2d_gb')}%)
-Current SBP: {patient_data.get('sbp')} mmHg, BMI: {patient_data.get('bmi')}
-Engagement: {patient_data.get('days_since_encounter')} days since last visit
+Facts:
+- Patient: {patient_data.get('name')}, {patient_data.get('age')} years old
+- HTN risk: {patient_data.get('htn_ensemble')}% (Lasso: {patient_data.get('htn_lasso')}%, RF: {patient_data.get('htn_rf')}%, GB: {patient_data.get('htn_gb')}%)
+- T2D risk: {patient_data.get('t2d_ensemble')}% (Lasso: {patient_data.get('t2d_lasso')}%, RF: {patient_data.get('t2d_rf')}%, GB: {patient_data.get('t2d_gb')}%)
+- Current SBP: {patient_data.get('sbp')} mmHg, BMI: {patient_data.get('bmi')}
+- Days since last visit: {patient_data.get('days_since_encounter')}
 
-Explain what these scores mean and what the care coordinator should do next."""
+Write 3 bullets:
+- Bullet 1: What the HTN risk score means using the exact percentage
+- Bullet 2: What the T2D risk score means using the exact percentage
+- Bullet 3: What the care coordinator should do next"""
 
         elif explanation_type == 'bmi_assessment':
-            prompt = f"""You are a friendly healthcare assistant explaining a child's BMI result to a care coordinator.
-Explain this in 2-3 simple sentences a non-medical person can understand. Be warm and reassuring where appropriate.
-Use 3 short bullet points maximum. Each bullet is one sentence. No jargon. No long paragraphs.
+            prompt = f"""You are a clinical assistant. Write exactly 3 bullet points. Each bullet starts with a dash on a new line. One sentence per bullet. No extra text before or after.
 
-Patient: {patient_data.get('name')}, {patient_data.get('age')} years old, {patient_data.get('gender')}
-BMI: {patient_data.get('bmi')}
-Category: {patient_data.get('category')}
-Recommendation: {patient_data.get('recommendation')}
+Facts:
+- Patient: {patient_data.get('name')}, {patient_data.get('age')} years old, {patient_data.get('gender')}
+- BMI: {patient_data.get('bmi')}
+- Category: {patient_data.get('category')}
+- Recommendation: {patient_data.get('recommendation')}
 
-Explain what this BMI result means for this child in plain English."""
+Write 3 bullets:
+- Bullet 1: What the BMI value means for a child this age
+- Bullet 2: What the {patient_data.get('category')} category means for their health
+- Bullet 3: What the care coordinator should do next"""
 
         else:
             return {"explanation": "No explanation available.", "source": "none"}
@@ -395,15 +397,32 @@ Explain what this BMI result means for this child in plain English."""
                 f'{ollama_url}/api/generate',
                 json={
                     'model': os.environ.get('OLLAMA_MODEL', 'phi3:latest'),
+                    'system': 'You are a clinical assistant. Never change or reinterpret numerical values or risk levels given to you. Use only the facts provided. Be concise.',
                     'prompt': prompt,
                     'stream': False,
+                    'options': {'temperature': 0, 'top_p': 0.9},
                 },
                 timeout=180
             )
             if resp.status_code == 200:
                 text = resp.json().get('response', '').strip()
+                logger.info("Ollama explain response: %s", text[:200])
+                ensemble_pct = patient_data.get('ensemble_pct', '')
+                if text and ensemble_pct:
+                    # Check for both int and float representations e.g. 50 and 50.0
+                    pct_int = str(int(float(ensemble_pct))) if ensemble_pct else ''
+                    pct_float = str(float(ensemble_pct)) if ensemble_pct else ''
+                    if pct_int not in text and pct_float not in text:
+                        logger.warning("Hallucination detected: expected %s%% in explanation", pct_int)
+                        return {
+                            "explanation": self._rule_based_explanation(explanation_type, patient_data),
+                            "source": "rule_based_validated"
+                        }
                 if text:
-                    return {"explanation": text, "source": "ollama-qwen3.5"}
+                    return {
+                        "explanation": text,
+                        "source": f"ollama-{os.environ.get('OLLAMA_MODEL', 'phi3')}"
+                    }
         except Exception as e:
             logger.warning("Ollama explain call failed: %s", e)
 
