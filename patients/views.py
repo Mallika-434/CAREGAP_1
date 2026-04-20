@@ -1280,14 +1280,21 @@ def resource_forecast(request):
 
     triage = cache.get('triage_list')
     if triage:
-        emergency = len(triage.get('emergency_patients', []))
-        urgent    = len(triage.get('urgent_patients', []))
-        high_risk_volume = emergency + urgent
+        risk_breakdown = {
+            'emergency': len(triage.get('emergency_patients', [])),
+            'high':      len(triage.get('urgent_patients', [])),
+            'moderate':  len(triage.get('warning_patients', [])),
+            'elevated':  len(triage.get('stable_patients', [])),
+        }
     else:
-        high_risk_volume = int(Patient.objects.filter(cohort='chronic').count() * 0.10)
+        chronic_count = int(Patient.objects.filter(cohort='chronic').count())
+        risk_breakdown = {
+            'emergency': int(chronic_count * 0.05),
+            'high':      int(chronic_count * 0.15),
+            'moderate':  int(chronic_count * 0.30),
+            'elevated':  int(chronic_count * 0.50),
+        }
 
-    high_risk_volume = max(high_risk_volume, 50)
-
-    forecast = forecast_resources(high_risk_volume)
+    forecast = forecast_resources(risk_breakdown)
     forecast['generated_at'] = datetime.now().isoformat()
     return Response(forecast)
