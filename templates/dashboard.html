@@ -1517,7 +1517,6 @@
       <div id="sec-explorer" class="section active">
         <div class="ph" style="margin-bottom:20px">
           <h2>Analytics Explorer</h2>
-          <p>Filter the 15,000-patient population and explore clinical distributions live.</p>
         </div>
 
         <!-- ── Tab bar ──────────────────────────────────────────────── -->
@@ -2486,7 +2485,7 @@
             </div>
           </div>
           <div style="font-size:.78rem;color:var(--text3);padding-bottom:6px">
-            Based on <strong style="color:var(--text)">${d.high_risk_volume}</strong> high-risk patients
+            Based on <strong style="color:var(--text)">${(d.risk_breakdown ? Object.values(d.risk_breakdown).reduce((a,b)=>a+b,0) : 0)}</strong> high-risk patients
             &nbsp;·&nbsp; ${d.period_days}-day window
             &nbsp;·&nbsp; Generated ${new Date(d.generated_at).toLocaleTimeString()}
           </div>`;
