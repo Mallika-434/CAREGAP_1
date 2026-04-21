@@ -1957,6 +1957,15 @@
 
       document.getElementById('risk-content').innerHTML = `
     <div class="risk-card ${risk.tier}" style="margin-top:4px">
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-weight:700;color:#0f172a;font-size:0.95rem;">${profile.first} ${profile.last}</div>
+          <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">${risk.patient_id}</div>
+        </div>
+        <div style="font-size:0.75rem;color:#64748b;background:#e0f2fe;padding:4px 10px;border-radius:20px;font-weight:600;">
+          ${profile.cohort}
+        </div>
+      </div>
       <div class="risk-badge">
         <div class="rb-tier">${risk.tier}</div>
         <div class="rb-score" style="color:${color}">${risk.score}</div>
@@ -2846,6 +2855,15 @@
                   const t2dColor = t2d.ensemble >= 60 ? '#ef4444' : t2d.ensemble >= 35 ? '#f59e0b' : '#10b981';
                   res.innerHTML = `
                     <div style="padding:16px;">
+                      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                          <div style="font-weight:700;color:#0f172a;font-size:0.95rem;">${od.name || ''}</div>
+                          <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">${od.patient_id || ''}</div>
+                        </div>
+                        <div style="font-size:0.75rem;color:#64748b;background:#e0f2fe;padding:4px 10px;border-radius:20px;font-weight:600;">
+                          At Risk
+                        </div>
+                      </div>
                       <!-- Header -->
                       <div style="text-align:center;margin-bottom:20px;">
                         <div style="font-size:0.85rem;color:#64748b;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">
@@ -2998,6 +3016,15 @@
                   const badgeColor = colorMap[bd.color] || '#64748b';
                   res.innerHTML = `
                     <div style="padding:16px;">
+                      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                          <div style="font-weight:700;color:#0f172a;font-size:0.95rem;">${bd.name || ''}</div>
+                          <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">${bd.patient_id || ''}</div>
+                        </div>
+                        <div style="font-size:0.75rem;color:#64748b;background:#e0f2fe;padding:4px 10px;border-radius:20px;font-weight:600;">
+                          Pediatric
+                        </div>
+                      </div>
                       <div style="text-align:center;margin-bottom:20px;">
                         <div style="font-size:0.85rem;color:#64748b;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">
                           Pediatric BMI Assessment
@@ -3133,11 +3160,13 @@
               <b style="color:var(--text)">${val}</b>
             </div>`).join('');
 
+          res.style.cssText = 'padding:16px;';
           res.innerHTML = `
             <!-- Patient header -->
             <div style="background:var(--bg3);padding:12px 16px;border-radius:8px;
                         border:1px solid var(--border2);margin-bottom:12px;
-                        display:flex;align-items:center;gap:14px">
+                        display:flex;align-items:center;gap:14px;
+                        max-width:780px;margin-left:auto;margin-right:auto;">
               <div style="flex:1">
                 <div style="font-size:.98rem;font-weight:600;color:var(--text)">
                   ${d.patient_name || d.patient_id}
@@ -3154,70 +3183,61 @@
               </div>
             </div>
 
-            <!-- Ensemble risk -->
-            <div style="background:var(--bg3);padding:16px;border-radius:8px;
-                        border:1px solid var(--border2);margin-bottom:12px;text-align:center">
-              <div style="font-size:3rem;font-weight:800;color:${riskColor};line-height:1">
-                ${pct}%
-              </div>
-              <div style="font-size:.85rem;color:var(--text2);margin:4px 0 8px">
-                6-Month Progression Risk &nbsp;·&nbsp;
-                <span style="color:${riskColor}">${trendArrow}</span>
-              </div>
-              <!-- Individual model scores -->
-              <div style="display:flex;gap:8px;margin:10px 0 6px">
-                ${modelRow}
-              </div>
-              <div style="font-size:.72rem;color:var(--text3)">
-                Range: ${Math.round((d.range_min || 0)*100)}% – ${Math.round((d.range_max || 0)*100)}%
-              </div>
-            </div>
-
             <!-- Sugar Risk + BP Risk panels side by side -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-
-              <!-- Sugar Risk (HbA1c) -->
-              <div style="background:var(--bg3);padding:14px;border-radius:8px;
-                          border:1px solid var(--border2)">
-                <div style="display:flex;justify-content:space-between;align-items:center;
-                            margin-bottom:10px">
-                  <span style="font-size:.85rem;font-weight:600;color:var(--text)">
-                    🩸 Sugar Risk (HbA1c)
-                  </span>
-                  <span style="font-size:1.1rem;font-weight:700;color:${sugarColor}">
-                    ${sugarPct}%
-                  </span>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+              <!-- Sugar Risk Card -->
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:nowrap;white-space:nowrap;">
+                  <span style="font-size:1.1rem;">🩸</span>
+                  <span style="font-weight:600;color:#374151;font-size:0.95rem;">Diabetes Risk (HbA1c)</span>
+                  <span style="margin-left:auto;font-weight:700;color:${sugarColor};font-size:1.1rem;">${sugarPct}%</span>
                 </div>
-                <div style="font-size:.75rem;color:var(--text3);margin-bottom:8px">
-                  6-Month HbA1c Projections
+                <div style="font-size:0.8rem;color:#64748b;margin-bottom:8px;">Individual Model Scores</div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.82rem;">
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
+                    <span style="color:#64748b;min-width:0;flex:1;">Lasso LR</span>
+                    <span style="font-weight:600;color:#374151;white-space:nowrap;">${sf.lasso != null ? sf.lasso + '%' : '—'}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
+                    <span style="color:#64748b;min-width:0;flex:1;">Random Forest</span>
+                    <span style="font-weight:600;color:#374151;white-space:nowrap;">${sf.rf != null ? sf.rf + '%' : '—'}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
+                    <span style="color:#64748b;min-width:0;flex:1;">GB (weighted)</span>
+                    <span style="font-weight:600;color:#374151;white-space:nowrap;">${sf.xgb != null ? sf.xgb + '%' : '—'}</span>
+                  </div>
                 </div>
-                ${sugarRows}
               </div>
-
-              <!-- BP Risk (SBP) -->
-              <div style="background:var(--bg3);padding:14px;border-radius:8px;
-                          border:1px solid var(--border2)">
-                <div style="display:flex;justify-content:space-between;align-items:center;
-                            margin-bottom:10px">
-                  <span style="font-size:.85rem;font-weight:600;color:var(--text)">
-                    💓 BP Risk (SBP)
-                  </span>
-                  <span style="font-size:1.1rem;font-weight:700;color:${bpColor}">
-                    ${bpPct}%
-                  </span>
+              <!-- BP Risk Card -->
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:nowrap;white-space:nowrap;">
+                  <span style="font-size:1.1rem;">💗</span>
+                  <span style="font-weight:600;color:#374151;font-size:0.95rem;">Hypertension Risk (SBP)</span>
+                  <span style="margin-left:auto;font-weight:700;color:${bpColor};font-size:1.1rem;">${bpPct}%</span>
                 </div>
-                <div style="font-size:.75rem;color:var(--text3);margin-bottom:8px">
-                  6-Month SBP Projections
+                <div style="font-size:0.8rem;color:#64748b;margin-bottom:8px;">Individual Model Scores</div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:0.82rem;">
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
+                    <span style="color:#64748b;min-width:0;flex:1;">Lasso LR</span>
+                    <span style="font-weight:600;color:#374151;white-space:nowrap;">${bf.lasso != null ? Math.round(bf.lasso) + ' mmHg' : '—'}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
+                    <span style="color:#64748b;min-width:0;flex:1;">Random Forest</span>
+                    <span style="font-weight:600;color:#374151;white-space:nowrap;">${bf.rf != null ? Math.round(bf.rf) + ' mmHg' : '—'}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
+                    <span style="color:#64748b;min-width:0;flex:1;">GB (weighted)</span>
+                    <span style="font-weight:600;color:#374151;white-space:nowrap;">${bf.xgb != null ? Math.round(bf.xgb) + ' mmHg' : '—'}</span>
+                  </div>
                 </div>
-                ${bpRows}
               </div>
-
             </div>
 
             <!-- Recommendation -->
             <div style="padding:12px 14px;background:${riskColor}18;
                         border-left:3px solid ${riskColor};border-radius:6px;
-                        font-size:.85rem;color:var(--text)">
+                        font-size:.85rem;color:var(--text);
+                        max-width:780px;margin-left:auto;margin-right:auto;">
               <b>Recommendation:</b> ${d.recommendation}
               <span style="float:right;font-size:.75rem;color:var(--text3)">
                 Confidence: ${d.confidence || '—'}
@@ -3387,9 +3407,10 @@
         // Format bullet points nicely
         const formatted = text
           .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-          .replace(/•\s*/g, '<br><br>• ')
-          .replace(/\.\s+(?=[A-Z\*])/g, '.<br><br>')
-          .trimStart();
+          .replace(/\.\s*<strong>/g, '.<br><br><strong>')
+          .replace(/(<\/strong>:?\s*)/g, '$1<br>')
+          .replace(/^\s*<br><br>/, '')
+          .trim();
         response.innerHTML = `
           <div style="font-size:0.8rem;color:#64748b;margin-bottom:10px;">
             Source: ${data.model || 'AI'}
