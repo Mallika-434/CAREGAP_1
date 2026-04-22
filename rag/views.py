@@ -68,9 +68,12 @@ def generate_suggestions(request):
 def rag_status(request):
     """
     Health check:
+    - Is MedGemma configured?
     - Is Ollama reachable?
     - Is the FAISS index built?
     """
+    medgemma_url = getattr(settings, 'MEDGEMMA_URL', '')
+
     # Check Ollama
     ollama_ok = False
     ollama_models = []
@@ -90,15 +93,19 @@ def rag_status(request):
     )
 
     return Response({
+        'deployment_mode': getattr(settings, 'DEPLOYMENT_MODE', 'internal'),
+        'medgemma_configured': bool(medgemma_url),
+        'medgemma_url': medgemma_url or None,
+        'medgemma_model': getattr(settings, 'MEDGEMMA_MODEL', ''),
         'ollama_reachable': ollama_ok,
         'ollama_url':       settings.OLLAMA_BASE_URL,
         'configured_model': settings.OLLAMA_MODEL,
         'available_models': ollama_models,
         'faiss_index_built': index_built,
         'index_path':       str(index_path),
-        'status': 'ready' if (ollama_ok and index_built) else 'not_ready',
+        'status': 'ready' if ((bool(medgemma_url) or ollama_ok) and index_built) else 'not_ready',
         'instructions': (
-            None if (ollama_ok and index_built) else
+            None if ((bool(medgemma_url) or ollama_ok) and index_built) else
             "Run: python manage.py build_rag_index — then ensure Ollama is running with your model."
         )
     })
