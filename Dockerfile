@@ -1,7 +1,7 @@
 # ── CareGap — Hugging Face Spaces Dockerfile ──────────────────────
 # Port 7860 is required by HF Spaces.
 # Non-root user (uid=1000) is required by HF Spaces Docker SDK.
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -24,15 +24,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ── Application files ─────────────────────────────────────────────
-# db.sqlite3 is intentionally copied so the demo works out of the box.
-# (It is excluded from the GitHub repo via .gitignore but included here.)
+# The Space should use the smaller demo database to keep builds lightweight.
 COPY --chown=user:user . .
-
-# Collect static assets for WhiteNoise to serve
-RUN python manage.py collectstatic --no-input
-
-# Copy SQLite DB to /tmp so the non-root user can write to it at runtime
-RUN cp /app/db.sqlite3 /tmp/db.sqlite3 && chmod 666 /tmp/db.sqlite3
 
 # Create writable cache dir before switching to non-root user
 RUN mkdir -p /tmp/caregap_cache && chmod 777 /tmp/caregap_cache
@@ -56,6 +49,8 @@ EXPOSE 7860
 
 # Run migrations → one-time ML setup → gunicorn
 CMD python manage.py migrate --no-input && \
+    if [ "$DEPLOYMENT_MODE" = "demo" ]; then python manage.py seed_demo_data; fi && \
+    (python manage.py collectstatic --no-input || true) && \
     if [ "$WARM_CACHE_ON_START" = "true" ]; then python manage.py warm_cache; fi && \
     exec gunicorn caregap.wsgi:application \
         --bind 0.0.0.0:7860 \

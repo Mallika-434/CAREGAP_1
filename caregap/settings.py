@@ -34,7 +34,7 @@ SECRET_KEY = os.environ.get(
 DEBUG = _env_bool('DEBUG', default=False)
 ALLOWED_HOSTS = _env_list(
     'ALLOWED_HOSTS',
-    default=['localhost', '127.0.0.1', '.ngrok-free.app', '.ngrok.io', '.ngrok-free.dev'],
+    default=['localhost', '127.0.0.1', 'testserver', '.ngrok-free.app', '.ngrok.io', '.ngrok-free.dev'],
 )
 
 INSTALLED_APPS = [
