@@ -30,6 +30,25 @@ from .stats_services import get_dashboard_stats_basic_payload, get_dashboard_sta
 from .triage_services import get_resource_forecast_payload, get_triage_payload
 
 
+def _to_json_safe(obj):
+    """Recursively convert numpy/pandas/datetime objects to JSON-safe Python types."""
+    import numpy as np
+    from datetime import date, datetime
+    if isinstance(obj, dict):
+        return {k: _to_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_json_safe(i) for i in obj]
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    return obj
+
+
 # ── 1. Patient Search ─────────────────────────────────────────────
 @api_view(['GET'])
 def patient_search(request):
