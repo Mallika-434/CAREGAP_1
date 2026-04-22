@@ -19,6 +19,36 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
+def _parse_date(val):
+    """Robustly parse date from datetime, date, pandas Timestamp, or ISO string."""
+    if val is None:
+        return None
+    if hasattr(val, 'date') and callable(val.date):
+        return val.date()
+    if hasattr(val, 'year'):
+        return val
+    try:
+        from datetime import date as _date
+        if isinstance(val, str):
+            return _date.fromisoformat(val[:10])
+    except Exception:
+        pass
+    return None
+
+
+def _is_active(stop_val):
+    """Return True if a condition/medication is still active (stop is None or NaT)."""
+    if stop_val is None:
+        return True
+    try:
+        import pandas as pd
+        if pd.isna(stop_val):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 @dataclass
 class RiskResult:
     tier: str                        # HIGH | MODERATE | PREVENTIVE | NORMAL
@@ -68,11 +98,11 @@ def assess_risk(patient, observations, conditions) -> RiskResult:
     from patients.models import Condition
     
     has_diabetes = any(
-        c.code in Condition.DIABETES_CODES and c.stop is None 
+        str(c.code) in Condition.DIABETES_CODES and _is_active(c.stop)
         for c in cond_list
     )
     has_hypertension = any(
-        c.code in Condition.HYPERTENSION_CODES and c.stop is None 
+        str(c.code) in Condition.HYPERTENSION_CODES and _is_active(c.stop)
         for c in cond_list
     )
 
@@ -99,8 +129,11 @@ def assess_risk(patient, observations, conditions) -> RiskResult:
         except (ValueError, TypeError):
             hba1c_value = None
 
-        last_date = latest_hba1c.date.date() if hasattr(latest_hba1c.date, 'date') else latest_hba1c.date
-        hba1c_days_gap = (today - last_date).days
+        last_date = _parse_date(latest_hba1c.date)
+        if last_date is None:
+            hba1c_days_gap = None
+        else:
+            hba1c_days_gap = (today - last_date).days
 
         if hba1c_days_gap > HBAC1C_CRITICAL_GAP:
             score += 35
