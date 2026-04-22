@@ -196,6 +196,129 @@ class RAGPipeline:
                 )
             self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
+    def _ollama_url(self) -> str:
+        return os.environ.get('OLLAMA_URL', 'http://localhost:11434')
+
+    def _ollama_model(self) -> str:
+        return os.environ.get('OLLAMA_MODEL', 'phi3:latest')
+
+    def _deployment_mode(self) -> str:
+        return getattr(settings, 'DEPLOYMENT_MODE', 'internal')
+
+    def _local_llm_enabled(self) -> bool:
+        return self._deployment_mode() == 'internal'
+
+    def _medgemma_url(self) -> str:
+        if not self._local_llm_enabled():
+            return ''
+        return os.environ.get('MEDGEMMA_URL') or getattr(settings, 'MEDGEMMA_URL', '')
+
+    def _medgemma_model(self) -> str:
+        return os.environ.get('MEDGEMMA_MODEL') or getattr(
+            settings,
+            'MEDGEMMA_MODEL',
+            'google/medgemma-1.5-4b-it',
+        )
+
+    def _gemini_key(self) -> str | None:
+        key = os.environ.get('GEMINI_API_KEY') or getattr(settings, 'GEMINI_API_KEY', None)
+        return key or None
+
+    def _call_medgemma(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        max_tokens: int = 400,
+        temperature: float = 0.2,
+        timeout: int = 180,
+    ) -> str | None:
+        medgemma_url = self._medgemma_url()
+        if not medgemma_url:
+            return None
+
+        messages = []
+        if system:
+            messages.append({'role': 'system', 'content': system})
+        messages.append({'role': 'user', 'content': prompt})
+
+        payload = {
+            'model': self._medgemma_model(),
+            'messages': messages,
+            'max_tokens': max_tokens,
+            'temperature': temperature,
+        }
+
+        response = requests.post(medgemma_url, json=payload, timeout=timeout)
+        if response.status_code != 200:
+            logger.warning("MedGemma returned status %s", response.status_code)
+            return None
+
+        data = response.json()
+        try:
+            choice = data['choices'][0]['message']['content']
+            if isinstance(choice, list):
+                parts = [part.get('text', '') for part in choice if isinstance(part, dict)]
+                return ''.join(parts).strip() or None
+            return str(choice).strip() or None
+        except (KeyError, IndexError, TypeError):
+            text = data.get('generated_text') or data.get('response')
+            if text:
+                return str(text).strip() or None
+            logger.warning("MedGemma response did not contain generated text")
+            return None
+
+    def _call_ollama(self, prompt: str, *, system: str | None = None, timeout: int = 180) -> str | None:
+        if not self._local_llm_enabled():
+            return None
+
+        payload = {
+            'model': self._ollama_model(),
+            'prompt': prompt,
+            'stream': False,
+        }
+        if system:
+            payload['system'] = system
+            payload['options'] = {'temperature': 0, 'top_p': 0.9}
+
+        response = requests.post(
+            f'{self._ollama_url()}/api/generate',
+            json=payload,
+            timeout=timeout,
+        )
+        if response.status_code != 200:
+            logger.warning("Ollama returned status %s", response.status_code)
+            return None
+        return response.json().get('response', '').strip() or None
+
+    def _call_gemini(self, prompt: str, *, max_output_tokens: int, temperature: float) -> str | None:
+        gemini_key = self._gemini_key()
+        if not gemini_key:
+            return None
+
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"gemini-2.0-flash-lite:generateContent?key={gemini_key}"
+        )
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "maxOutputTokens": max_output_tokens,
+                "temperature": temperature,
+            },
+        }
+        response = requests.post(url, json=payload, timeout=15)
+        if response.status_code != 200:
+            logger.warning("Gemini returned status %s", response.status_code)
+            return None
+
+        data = response.json()
+        try:
+            return data['candidates'][0]['content']['parts'][0]['text'].strip() or None
+        except (KeyError, IndexError, TypeError):
+            logger.warning("Gemini response did not contain generated text")
+            return None
+
     def build_index(self):
         """Build FAISS index from KNOWLEDGE_BASE. Run once via management command."""
         self._load_model()
@@ -287,54 +410,44 @@ class RAGPipeline:
         # Step 3: Build prompt
         prompt = _build_prompt(patient_profile, context)
 
-        # Step 4: Try Ollama first (local, free, no rate limits)
-        ollama_url = os.environ.get('OLLAMA_URL', 'http://localhost:11434')
+        # Step 4: Try MedGemma first for healthcare-aware local generation
         try:
-            resp = requests.post(
-                f'{ollama_url}/api/generate',
-                json={
-                    'model': os.environ.get('OLLAMA_MODEL', 'phi3:latest'),
-                    'prompt': prompt,
-                    'stream': False,
-                },
-                timeout=180
-            )
-            if resp.status_code == 200:
-                text = resp.json().get('response', '').strip()
-                if text:
-                    return {
-                        'query':        query,
-                        'context_used': [c.get('id') for c in chunks],
-                        'suggestions':  text,
-                        'model':        'ollama-qwen3.5',
-                    }
+            text = self._call_medgemma(prompt, max_tokens=400, temperature=0.2)
+            if text:
+                return {
+                    'query': query,
+                    'context_used': [c.get('id') for c in chunks],
+                    'suggestions': text,
+                    'model': f'medgemma-{self._medgemma_model()}',
+                }
+        except Exception as e:
+            logger.warning("MedGemma RAG call failed: %s", e)
+
+        # Secondary local fallback: Ollama
+        try:
+            text = self._call_ollama(prompt)
+            if text:
+                return {
+                    'query': query,
+                    'context_used': [c.get('id') for c in chunks],
+                    'suggestions': text,
+                    'model': f'ollama-{self._ollama_model()}',
+                }
         except Exception as e:
             logger.warning("Ollama RAG call failed: %s", e)
 
-        # Fallback to Gemini if Ollama unavailable
-        gemini_key = os.environ.get('GEMINI_API_KEY') or getattr(settings, 'GEMINI_API_KEY', None)
-        if gemini_key:
-            try:
-                url = (
-                    "https://generativelanguage.googleapis.com/v1beta/models/"
-                    f"gemini-2.0-flash-lite:generateContent?key={gemini_key}"
-                )
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"maxOutputTokens": 400, "temperature": 0.3},
+        # Cloud fallback: Gemini only when explicitly configured
+        try:
+            text = self._call_gemini(prompt, max_output_tokens=400, temperature=0.3)
+            if text:
+                return {
+                    'query': query,
+                    'context_used': [c.get('id') for c in chunks],
+                    'suggestions': text,
+                    'model': 'gemini-fallback',
                 }
-                resp = requests.post(url, json=payload, timeout=15)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    text = data['candidates'][0]['content']['parts'][0]['text']
-                    return {
-                        'query':        query,
-                        'context_used': [c.get('id') for c in chunks],
-                        'suggestions':  text.strip(),
-                        'model':        'gemini-fallback',
-                    }
-            except Exception as e:
-                logger.warning("Gemini RAG call failed: %s", e)
+        except Exception as e:
+            logger.warning("Gemini RAG call failed: %s", e)
 
         return {
             'query':        query,
@@ -390,26 +503,37 @@ Write 3 bullets:
         else:
             return {"explanation": "No explanation available.", "source": "none"}
 
-        # Try Ollama first
-        ollama_url = os.environ.get('OLLAMA_URL', 'http://localhost:11434')
+        # Try MedGemma first
+        system_prompt = (
+            'You are a clinical assistant. Never change or reinterpret numerical '
+            'values or risk levels given to you. Use only the facts provided. '
+            'Be concise.'
+        )
         try:
-            resp = requests.post(
-                f'{ollama_url}/api/generate',
-                json={
-                    'model': os.environ.get('OLLAMA_MODEL', 'phi3:latest'),
-                    'system': 'You are a clinical assistant. Never change or reinterpret numerical values or risk levels given to you. Use only the facts provided. Be concise.',
-                    'prompt': prompt,
-                    'stream': False,
-                    'options': {'temperature': 0, 'top_p': 0.9},
-                },
-                timeout=180
+            text = self._call_medgemma(
+                prompt,
+                system=system_prompt,
+                max_tokens=300,
+                temperature=0.1,
             )
-            if resp.status_code == 200:
-                text = resp.json().get('response', '').strip()
+            if text:
+                return {
+                    "explanation": text,
+                    "source": f"medgemma-{self._medgemma_model()}",
+                }
+        except Exception as e:
+            logger.warning("MedGemma explain call failed: %s", e)
+
+        # Secondary local fallback: Ollama
+        try:
+            text = self._call_ollama(
+                prompt,
+                system=system_prompt,
+            )
+            if text:
                 logger.info("Ollama explain response: %s", text[:200])
                 ensemble_pct = patient_data.get('ensemble_pct', '')
                 if text and ensemble_pct:
-                    # Check for both int and float representations e.g. 50 and 50.0
                     pct_int = str(int(float(ensemble_pct))) if ensemble_pct else ''
                     pct_float = str(float(ensemble_pct)) if ensemble_pct else ''
                     if pct_int not in text and pct_float not in text:
@@ -418,33 +542,20 @@ Write 3 bullets:
                             "explanation": self._rule_based_explanation(explanation_type, patient_data),
                             "source": "rule_based_validated"
                         }
-                if text:
-                    return {
-                        "explanation": text,
-                        "source": f"ollama-{os.environ.get('OLLAMA_MODEL', 'phi3')}"
-                    }
+                return {
+                    "explanation": text,
+                    "source": f"ollama-{self._ollama_model()}",
+                }
         except Exception as e:
             logger.warning("Ollama explain call failed: %s", e)
 
-        # Fallback to Gemini
-        gemini_key = os.environ.get('GEMINI_API_KEY') or getattr(settings, 'GEMINI_API_KEY', None)
-        if gemini_key:
-            try:
-                url = (
-                    "https://generativelanguage.googleapis.com/v1beta/models/"
-                    f"gemini-2.0-flash-lite:generateContent?key={gemini_key}"
-                )
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"maxOutputTokens": 300, "temperature": 0.4},
-                }
-                resp = requests.post(url, json=payload, timeout=15)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    text = data['candidates'][0]['content']['parts'][0]['text']
-                    return {"explanation": text.strip(), "source": "gemini"}
-            except Exception as e:
-                logger.warning("Gemini explain call failed: %s", e)
+        # Cloud fallback: Gemini only when configured
+        try:
+            text = self._call_gemini(prompt, max_output_tokens=300, temperature=0.4)
+            if text:
+                return {"explanation": text, "source": "gemini"}
+        except Exception as e:
+            logger.warning("Gemini explain call failed: %s", e)
 
         return {"explanation": self._rule_based_explanation(explanation_type, patient_data), "source": "rule_based"}
 

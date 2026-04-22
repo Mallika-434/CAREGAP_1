@@ -7,7 +7,6 @@ __pycache__/
 .gitignore
 .dockerignore
 cache/
-models/risk_predictor.pkl
 staticfiles/
 *.zip
 *.log

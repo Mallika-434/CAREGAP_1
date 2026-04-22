@@ -3,6 +3,9 @@
 # Non-root user (uid=1000) is required by HF Spaces Docker SDK.
 FROM python:3.11-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 # System deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc \
@@ -36,8 +39,15 @@ RUN mkdir -p /tmp/caregap_cache && chmod 777 /tmp/caregap_cache
 
 # Environment variables for HF Spaces runtime
 ENV DB_PATH=/tmp/db.sqlite3
-ENV SECRET_KEY=caregap-hf-spaces-demo-key-2024
+ENV ENVIRONMENT=hf_spaces
+ENV DEPLOYMENT_MODE=demo
 ENV DEBUG=False
+ENV ALLOWED_HOSTS=.hf.space,localhost,127.0.0.1
+ENV CSRF_TRUSTED_ORIGINS=https://*.hf.space
+ENV USE_X_FORWARDED_HOST=True
+ENV OLLAMA_MODEL=phi3:latest
+ENV CARE_GAP_CACHE_DIR=/tmp/caregap_cache
+ENV WARM_CACHE_ON_START=false
 
 # Switch to non-root user
 USER user
@@ -46,7 +56,7 @@ EXPOSE 7860
 
 # Run migrations → one-time ML setup → gunicorn
 CMD python manage.py migrate --no-input && \
-    python manage.py setup_demo && \
+    if [ "$WARM_CACHE_ON_START" = "true" ]; then python manage.py warm_cache; fi && \
     exec gunicorn caregap.wsgi:application \
         --bind 0.0.0.0:7860 \
         --workers 1 \
