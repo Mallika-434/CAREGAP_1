@@ -1146,6 +1146,16 @@
       background: var(--border2);
       border-radius: 3px;
     }
+    .ai-fab { position:fixed; bottom:30px; right:30px; width:60px; height:60px; border-radius:50%; background:#0d9488; color:white; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:1000; box-shadow:0 4px 20px rgba(13,148,136,0.4); transition:transform 0.2s; }
+    .ai-fab:hover { transform:scale(1.1) rotate(5deg); }
+    .ai-chat-window { position:fixed; right:30px; bottom:100px; width:400px; height:600px; max-height:80vh; background:var(--bg2); border:1px solid var(--border); border-radius:20px; display:none; flex-direction:column; box-shadow:0 20px 50px rgba(0,0,0,0.15); z-index:1001; overflow:hidden; animation:slideIn 0.3s ease-out; }
+    @keyframes slideIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+    .ai-chat-header { padding:20px; background:var(--bg3); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+    .ai-chat-body { flex:1; padding:20px; overflow-y:auto; background:var(--bg); }
+    .ai-chat-footer { padding:16px; border-top:1px solid var(--border); display:flex; gap:10px; }
+    .msg { max-width:85%; padding:12px 16px; border-radius:16px; margin-bottom:16px; font-size:0.88rem; line-height:1.5; }
+    .msg-ai { background:var(--bg2); color:var(--text); border:1px solid var(--border); border-bottom-left-radius:4px; }
+    .msg-user { background:#0d9488; color:white; margin-left:auto; border-bottom-right-radius:4px; }
   </style>
 </head>
 
@@ -1178,6 +1188,12 @@
         </svg>
       </svgi>
       Population Dashboard
+    </div>
+    <div class="nav-item" onclick="showSection('ai_assistant', this)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      AI Suggestions
     </div>
 
     <div class="slabel">Patient Detail</div>
@@ -1665,6 +1681,26 @@
         </div><!-- /exp-pane-predictive -->
 
       </div>
+
+      <!-- ═══ SECTION: AI ASSISTANT ═══ -->
+      <div id="sec-ai_assistant" class="section" style="display:none;">
+        <div style="margin-bottom:16px;">
+          <h2 style="font-size:1.2rem;font-weight:600;color:var(--text);">AI Clinical Suggestions</h2>
+          <p style="font-size:0.85rem;color:var(--text3);margin-top:4px;">Ask a clinical question and get evidence-based suggestions powered by AI.</p>
+        </div>
+        <div style="max-width:800px;">
+          <div id="sidebar-ai-history" style="min-height:200px;max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;background:var(--bg3);">
+            <div class="msg msg-ai">Hello! Ask me anything about your patients, clinical guidelines, or population health trends.</div>
+          </div>
+          <div style="display:flex;gap:10px;">
+            <input type="text" id="sidebar-ai-input" placeholder="e.g. What lifestyle changes help hypertension patients?"
+              onkeydown="if(event.key==='Enter') sendSidebarAI()"
+              style="flex:1;padding:12px;border:1.5px solid var(--border2);border-radius:10px;outline:none;font-family:inherit;font-size:0.88rem;">
+            <button onclick="sendSidebarAI()" style="padding:10px 20px;background:#0d9488;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">Ask</button>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /content -->
   </main>
 
@@ -3112,6 +3148,8 @@
           }
 
           const pct        = Math.round((d.progression_probability || 0) * 100);
+          window._lastEnsemblePct = pct;
+          window._lastRecommendation = d.recommendation || '';
           const riskColor  = pct >= 70 ? '#ef4444' : pct >= 40 ? '#f59e0b' : '#22c55e';
           const trendArrow = d.risk_trajectory === 'worsening' ? '↑ Worsening'
                            : d.risk_trajectory === 'improving' ? '↓ Improving' : '→ Stable';
@@ -3423,7 +3461,189 @@
         response.innerHTML = '<span style="color:#ef4444;">Failed to get suggestions. Please try again.</span>';
       });
     }
+
+    async function sendSidebarAI() {
+      const input = document.getElementById('sidebar-ai-input');
+      const history = document.getElementById('sidebar-ai-history');
+      const question = input.value.trim();
+      if (!question) return;
+      input.value = '';
+      const userDiv = document.createElement('div');
+      userDiv.className = 'msg msg-user';
+      userDiv.textContent = question;
+      history.appendChild(userDiv);
+      const loadingId = 'sai-' + Date.now();
+      const aiDiv = document.createElement('div');
+      aiDiv.className = 'msg msg-ai';
+      aiDiv.innerHTML = `<span id="${loadingId}">⏳ Thinking...</span>`;
+      history.appendChild(aiDiv);
+      history.scrollTop = history.scrollHeight;
+      try {
+        const isRiskQuestion = /risk|predict|deteriorat|progress|explain|score|percent|chance|likely|worse/i.test(question);
+        const endpoint = isRiskQuestion ? '/api/rag/explain/' : '/api/rag/suggest/';
+        let body;
+        if (isRiskQuestion && currentPatientId) {
+          const pct = window._lastEnsemblePct || null;
+          const riskLevel = pct >= 60 ? 'HIGH' : pct >= 35 ? 'MODERATE' : 'LOW';
+          body = JSON.stringify({
+            explanation_type: 'chronic_prediction',
+            patient_data: {
+              name: currentPatientData ? currentPatientData.first + ' ' + currentPatientData.last : '',
+              age: currentPatientData ? currentPatientData.age : '',
+              conditions: currentPatientData ? (currentPatientData.has_diabetes && currentPatientData.has_hypertension ? 'Diabetes and Hypertension' : currentPatientData.has_diabetes ? 'Diabetes' : currentPatientData.has_hypertension ? 'Hypertension' : 'None') : '',
+              hba1c: currentPatientData ? (currentPatientData.latest_hba1c || 'Not tested') : '',
+              sbp: currentPatientData ? (currentPatientData.latest_sbp || 'Not recorded') : '',
+              ensemble_pct: pct,
+              recommendation: window._lastRecommendation || '',
+            }
+          });
+        } else {
+          body = JSON.stringify({
+            question: question,
+            patient_id: currentPatientId || null,
+            name: currentPatientData ? currentPatientData.first + ' ' + currentPatientData.last : null,
+            age: currentPatientData ? currentPatientData.age : null,
+            gender: currentPatientData ? currentPatientData.gender : null,
+            has_diabetes: currentPatientData ? currentPatientData.has_diabetes : false,
+            has_hypertension: currentPatientData ? currentPatientData.has_hypertension : false,
+            hba1c_value: currentPatientData ? currentPatientData.latest_hba1c : null,
+            latest_sbp: currentPatientData ? currentPatientData.latest_sbp : null,
+          });
+        }
+        const resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+          body: body
+        });
+        const data = await resp.json();
+        const el = document.getElementById(loadingId);
+        if (el) {
+          const raw = data.explanation || data.suggestions || data.error || 'No response.';
+          const text = raw
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\.\s*<strong>/g, '.<br><br><strong>')
+            .replace(/(<\/strong>:?\s*)/g, '$1<br>')
+            .replace(/-\s*-\s*/g, '')
+            .replace(/\n-\s*/g, '<br><br>- ')
+            .trim();
+          el.parentElement.innerHTML = text;
+        }
+      } catch(e) {
+        const el = document.getElementById(loadingId);
+        if (el) el.parentElement.innerHTML = 'Sorry, something went wrong.';
+      }
+      history.scrollTop = history.scrollHeight;
+    }
+
+    function toggleGlobalChat() {
+      const win = document.getElementById('ai-chat-window');
+      const isVisible = win.style.display === 'flex';
+      win.style.display = isVisible ? 'none' : 'flex';
+      if (!isVisible) document.getElementById('global-chat-input').focus();
+    }
+
+    function addGlobalChatMessage(role, text) {
+      const body = document.getElementById('global-chat-body');
+      const div = document.createElement('div');
+      div.className = `msg msg-${role}`;
+      div.innerHTML = text;
+      body.appendChild(div);
+      body.scrollTop = body.scrollHeight;
+    }
+
+    async function sendGlobalChat() {
+      const input = document.getElementById('global-chat-input');
+      const question = input.value.trim();
+      if (!question) return;
+      input.value = '';
+      addGlobalChatMessage('user', question);
+      const loadingId = 'loading-' + Date.now();
+      addGlobalChatMessage('ai', `<span id="${loadingId}">⏳ Thinking...</span>`);
+      try {
+        const isRiskQuestion = /risk|predict|deteriorat|progress|explain|score|percent|chance|likely|worse/i.test(question);
+        const endpoint = isRiskQuestion ? '/api/rag/explain/' : '/api/rag/suggest/';
+        let body;
+        if (isRiskQuestion && currentPatientId) {
+          const pct = window._lastEnsemblePct || null;
+          const riskLevel = pct >= 60 ? 'HIGH' : pct >= 35 ? 'MODERATE' : 'LOW';
+          body = JSON.stringify({
+            explanation_type: 'chronic_prediction',
+            patient_data: {
+              name: currentPatientData ? currentPatientData.first + ' ' + currentPatientData.last : '',
+              age: currentPatientData ? currentPatientData.age : '',
+              conditions: currentPatientData ? (currentPatientData.has_diabetes && currentPatientData.has_hypertension ? 'Diabetes and Hypertension' : currentPatientData.has_diabetes ? 'Diabetes' : currentPatientData.has_hypertension ? 'Hypertension' : 'None') : '',
+              hba1c: currentPatientData ? (currentPatientData.latest_hba1c || 'Not tested') : '',
+              sbp: currentPatientData ? (currentPatientData.latest_sbp || 'Not recorded') : '',
+              ensemble_pct: pct,
+              recommendation: window._lastRecommendation || '',
+            }
+          });
+        } else {
+          body = JSON.stringify({
+            question: question,
+            patient_id: currentPatientId || null,
+            name: currentPatientData ? currentPatientData.first + ' ' + currentPatientData.last : null,
+            age: currentPatientData ? currentPatientData.age : null,
+            gender: currentPatientData ? currentPatientData.gender : null,
+            has_diabetes: currentPatientData ? currentPatientData.has_diabetes : false,
+            has_hypertension: currentPatientData ? currentPatientData.has_hypertension : false,
+            hba1c_value: currentPatientData ? currentPatientData.latest_hba1c : null,
+            latest_sbp: currentPatientData ? currentPatientData.latest_sbp : null,
+          });
+        }
+        const resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+          body: body
+        });
+        const data = await resp.json();
+        const el = document.getElementById(loadingId);
+        if (el) {
+          const raw = data.explanation || data.suggestions || data.error || 'No response.';
+          const text = raw
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\.\s*<strong>/g, '.<br><br><strong>')
+            .replace(/(<\/strong>:?\s*)/g, '$1<br>')
+            .replace(/-\s*-\s*/g, '')
+            .replace(/\n-\s*/g, '<br><br>- ')
+            .trim();
+          el.parentElement.innerHTML = text;
+        }
+      } catch(e) {
+        const el = document.getElementById(loadingId);
+        if (el) el.parentElement.innerHTML = 'Sorry, something went wrong.';
+      }
+    }
   </script>
+
+<div class="ai-fab" onclick="toggleGlobalChat()">
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+  </svg>
+</div>
+<div class="ai-chat-window" id="ai-chat-window">
+  <div class="ai-chat-header">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:10px;height:10px;border-radius:50%;background:#0d9488;"></div>
+      <span style="font-weight:600;font-size:.9rem;">CareGap Clinical Assistant</span>
+    </div>
+    <button onclick="toggleGlobalChat()" style="background:none;border:none;color:var(--text3);cursor:pointer;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+  </div>
+  <div class="ai-chat-body" id="global-chat-body">
+    <div class="msg msg-ai">Hello! I am your CareGap clinical assistant. Ask me anything about patient risks, clinical guidelines, or population health.</div>
+  </div>
+  <div class="ai-chat-footer">
+    <input type="text" id="global-chat-input" placeholder="Type a clinical question..."
+      onkeydown="if(event.key==='Enter') sendGlobalChat()"
+      style="flex:1;padding:10px;border:1px solid var(--border2);border-radius:10px;outline:none;font-family:inherit;font-size:.85rem;">
+    <button onclick="sendGlobalChat()" style="padding:8px 14px;background:#0d9488;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">Send</button>
+  </div>
+</div>
 </body>
 
 </html>
