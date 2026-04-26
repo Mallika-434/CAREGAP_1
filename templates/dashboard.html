@@ -3488,7 +3488,7 @@
           const pct = window._lastEnsemblePct || null;
           const riskLevel = pct >= 60 ? 'HIGH' : pct >= 35 ? 'MODERATE' : 'LOW';
           body = JSON.stringify({
-            explanation_type: 'chronic_prediction',
+            explanation_type: 'chat_prediction',
             patient_data: {
               name: currentPatientData ? currentPatientData.first + ' ' + currentPatientData.last : '',
               age: currentPatientData ? currentPatientData.age : '',
@@ -3569,7 +3569,7 @@
           const pct = window._lastEnsemblePct || null;
           const riskLevel = pct >= 60 ? 'HIGH' : pct >= 35 ? 'MODERATE' : 'LOW';
           body = JSON.stringify({
-            explanation_type: 'chronic_prediction',
+            explanation_type: 'chat_prediction',
             patient_data: {
               name: currentPatientData ? currentPatientData.first + ' ' + currentPatientData.last : '',
               age: currentPatientData ? currentPatientData.age : '',
