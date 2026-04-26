@@ -463,18 +463,32 @@ class RAGPipeline:
         if explanation_type == 'chronic_prediction':
             risk_level = 'HIGH' if (patient_data.get('ensemble_pct') or 0) >= 60 else 'MODERATE' if (patient_data.get('ensemble_pct') or 0) >= 35 else 'LOW'
 
-            prompt = f"""You are a clinical assistant in a chat interface. Reply in exactly 3 short lines. Each line starts with a dash. Maximum 15 words per line. No paragraphs. No extra text.
+            prompt = f"""You are a clinical assistant. Write exactly 3 bullet points explaining this patient's results to a care coordinator. Each bullet is one sentence. Start each bullet with a dash. Do not add any other text. Do not interpret or change the risk level — use exactly what is given.
 
-Patient: {patient_data.get('name')}, {patient_data.get('age')} years old
-HbA1c: {patient_data.get('hba1c') or 'Not tested'}
-BP: {patient_data.get('sbp') or 'Not recorded'}
-Risk: {risk_level} ({patient_data.get('ensemble_pct')}%)
-Action: {patient_data.get('recommendation')}
+Facts:
+- Patient: {patient_data.get('name')}, {patient_data.get('age')} years old
+- Conditions: {patient_data.get('conditions', 'None')}
+- HbA1c: {patient_data.get('hba1c') or 'Not tested'}
+- Systolic BP: {patient_data.get('sbp') or 'Not recorded'}
+- Risk level: {risk_level} ({patient_data.get('ensemble_pct')}% chance of deterioration in 6 months)
+- Recommendation: {patient_data.get('recommendation')}
 
-3 lines only:
-- Line 1: HbA1c and BP status in simple words
-- Line 2: What {risk_level} risk ({patient_data.get('ensemble_pct')}%) means
-- Line 3: What to do next"""
+Write 3 bullets:
+- Bullet 1: What the HbA1c and BP numbers mean for this patient
+- Bullet 2: What the {risk_level} risk level means (use the exact percentage {patient_data.get('ensemble_pct')}%)
+- Bullet 3: What the care coordinator should do next based on the recommendation"""
+
+        elif explanation_type == 'chat_prediction':
+            risk_level = 'HIGH' if (patient_data.get('ensemble_pct') or 0) >= 60 else 'MODERATE' if (patient_data.get('ensemble_pct') or 0) >= 35 else 'LOW'
+            prompt = f"""RESPOND WITH EXACTLY 3 SHORT SENTENCES. No more. Each sentence under 15 words.
+
+Patient {patient_data.get('name')}: HbA1c={patient_data.get('hba1c') or 'not tested'}, BP={patient_data.get('sbp') or 'not recorded'}, Risk={risk_level} {patient_data.get('ensemble_pct')}%, Action={patient_data.get('recommendation')}
+
+Sentence 1: HbA1c and BP status.
+Sentence 2: What {patient_data.get('ensemble_pct')}% {risk_level} risk means.
+Sentence 3: What to do next.
+
+OUTPUT FORMAT: Three sentences only. Nothing else."""
 
         elif explanation_type == 'onset_risk':
             prompt = f"""You are a clinical assistant. Write exactly 3 bullet points. Each bullet starts with a dash on a new line. One sentence per bullet. No extra text before or after.
@@ -538,7 +552,7 @@ Write 3 bullets:
             if text:
                 logger.info("Ollama explain response: %s", text[:200])
                 ensemble_pct = patient_data.get('ensemble_pct', '')
-                if text and ensemble_pct:
+                if text and ensemble_pct and explanation_type == 'chronic_prediction':
                     pct_int = str(int(float(ensemble_pct))) if ensemble_pct else ''
                     pct_float = str(float(ensemble_pct)) if ensemble_pct else ''
                     if pct_int not in text and pct_float not in text:
@@ -547,6 +561,11 @@ Write 3 bullets:
                             "explanation": self._rule_based_explanation(explanation_type, patient_data),
                             "source": "rule_based_validated"
                         }
+                if text and explanation_type == 'chat_prediction':
+                    import re
+                    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+                    sentences = [s.strip() for s in sentences if s.strip()][:3]
+                    text = ' '.join(sentences)
                 return {
                     "explanation": text,
                     "source": f"ollama-{self._ollama_model()}",
