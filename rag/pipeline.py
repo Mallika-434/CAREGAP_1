@@ -463,13 +463,18 @@ class RAGPipeline:
         if explanation_type == 'chronic_prediction':
             risk_level = 'HIGH' if (patient_data.get('ensemble_pct') or 0) >= 60 else 'MODERATE' if (patient_data.get('ensemble_pct') or 0) >= 35 else 'LOW'
 
-            prompt = f"""RESPOND WITH EXACTLY 3 LINES. Each line starts with "- ". No other text.
+            prompt = f"""You are a clinical assistant in a chat interface. Reply in exactly 3 short lines. Each line starts with a dash. Maximum 15 words per line. No paragraphs. No extra text.
 
-Line 1: What {patient_data.get('name')}'s HbA1c of {patient_data.get('hba1c') or 'not tested'} and BP of {patient_data.get('sbp')} mmHg means.
-Line 2: What {risk_level} risk ({patient_data.get('ensemble_pct')}%) means for this patient.
-Line 3: What the care coordinator should do: {patient_data.get('recommendation')}.
+Patient: {patient_data.get('name')}, {patient_data.get('age')} years old
+HbA1c: {patient_data.get('hba1c') or 'Not tested'}
+BP: {patient_data.get('sbp') or 'Not recorded'}
+Risk: {risk_level} ({patient_data.get('ensemble_pct')}%)
+Action: {patient_data.get('recommendation')}
 
-START YOUR RESPONSE WITH "- " AND NOTHING ELSE."""
+3 lines only:
+- Line 1: HbA1c and BP status in simple words
+- Line 2: What {risk_level} risk ({patient_data.get('ensemble_pct')}%) means
+- Line 3: What to do next"""
 
         elif explanation_type == 'onset_risk':
             prompt = f"""You are a clinical assistant. Write exactly 3 bullet points. Each bullet starts with a dash on a new line. One sentence per bullet. No extra text before or after.

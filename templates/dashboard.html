@@ -1918,6 +1918,8 @@
       const profile = await profileRes.json();
       const risk = await riskRes.json();
       currentPatientData = profile;
+      currentPatientData.latest_hba1c = risk.hba1c_value ?? null;
+      currentPatientData.latest_sbp   = risk.latest_sbp  ?? null;
 
       document.getElementById('nav-profile-name').textContent = `${profile.first} ${profile.last}`;
 
