@@ -179,14 +179,14 @@ def patient_predict(request, patient_id):
     return Response(payload)
 
 @api_view(['GET'])
-def patient_onset_risk(request, pk):
+def patient_onset_risk(request, patient_id):
     """GET /api/patients/<id>/onset-risk/
     Returns HTN and T2D onset risk scores for at-risk patients.
     """
     from .ml_models import predict_onset_risk
 
     try:
-        patient = Patient.objects.get(patient_id=pk)
+        patient = Patient.objects.get(patient_id=patient_id)
     except Patient.DoesNotExist:
         return Response({'error': 'Patient not found'}, status=404)
 
@@ -213,14 +213,14 @@ def patient_onset_risk(request, pk):
 
 
 @api_view(['GET'])
-def patient_bmi_assessment(request, pk):
+def patient_bmi_assessment(request, patient_id):
     """GET /api/patients/<id>/bmi-assessment/
     Returns age-appropriate BMI assessment for pediatric patients.
     """
     from datetime import date
 
     try:
-        patient = Patient.objects.get(patient_id=pk)
+        patient = Patient.objects.get(patient_id=patient_id)
     except Patient.DoesNotExist:
         return Response({'error': 'Patient not found'}, status=404)
 

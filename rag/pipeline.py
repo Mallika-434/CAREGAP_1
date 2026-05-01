@@ -277,9 +277,9 @@ class RAGPipeline:
             'prompt': prompt,
             'stream': False,
         }
+        payload['options'] = {'temperature': 0, 'top_p': 0.9}
         if system:
             payload['system'] = system
-            payload['options'] = {'temperature': 0, 'top_p': 0.9}
 
         response = requests.post(
             f'{self._ollama_url()}/api/generate',

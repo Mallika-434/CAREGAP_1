@@ -5,37 +5,16 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 
-# Load .env from project root (if present).
-# Variables already set in the environment take precedence.
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
-ENVIRONMENT = os.environ.get('ENVIRONMENT', 'development').strip().lower()
-DEPLOYMENT_MODE = os.environ.get('DEPLOYMENT_MODE', 'internal').strip().lower()
 
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
-
-
-def _env_list(name: str, default: list[str] | None = None) -> list[str]:
-    value = os.environ.get(name)
-    if value is None:
-        return list(default or [])
-    return [item.strip() for item in value.split(',') if item.strip()]
+load_dotenv(BASE_DIR / '.env')
 
 SECRET_KEY = os.environ.get(
     'SECRET_KEY',
     'caregap-dev-secret-key-change-in-production',
 )
-DEBUG = _env_bool('DEBUG', default=False)
-ALLOWED_HOSTS = _env_list(
-    'ALLOWED_HOSTS',
-    default=['localhost', '127.0.0.1', 'testserver', '.ngrok-free.app', '.ngrok.io', '.ngrok-free.dev'],
-)
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -80,30 +59,40 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'caregap.wsgi.application'
+WSGI_APPLICATION = 'caregap.wsgi:application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.environ.get('DB_PATH', str(BASE_DIR / 'db.sqlite3')),
+ENTERPRISE_MODE = os.environ.get('ENTERPRISE_MODE', '0') == '1'
+
+if ENTERPRISE_MODE:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('POSTGRES_DB', 'caregap_db'),
+            'USER': os.environ.get('POSTGRES_USER', 'caregap_user'),
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'caregap_password'),
+            'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
+            'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+        }
     }
-}
+else:
+    _db_name = os.environ.get('DB_PATH', 'db_demo.sqlite3')
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / _db_name,
+        }
+    }
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 _static_dir = BASE_DIR / 'static'
-STATICFILES_DIRS = [_static_dir] if _static_dir.exists() else []
+if _static_dir.exists():
+    STATICFILES_DIRS = [_static_dir]
 
-# Django 4.2+ STORAGES dict replaces the old STATICFILES_STORAGE setting.
-# WhiteNoise compresses + fingerprints static files for efficient serving.
-STORAGES = {
-    'default': {
-        'BACKEND': 'django.core.files.storage.FileSystemStorage',
-    },
-    'staticfiles': {
-        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
-    },
-}
+if DEBUG:
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+else:
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -113,66 +102,42 @@ REST_FRAMEWORK = {
     ],
 }
 
-CORS_ALLOW_ALL_ORIGINS = _env_bool('CORS_ALLOW_ALL_ORIGINS', default=DEBUG)
-CORS_ALLOWED_ORIGINS = _env_list('CORS_ALLOWED_ORIGINS')
-CSRF_TRUSTED_ORIGINS = _env_list('CSRF_TRUSTED_ORIGINS')
+CORS_ALLOW_ALL_ORIGINS = True
 
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-USE_X_FORWARDED_HOST = _env_bool('USE_X_FORWARDED_HOST', default=not DEBUG)
-
-SESSION_COOKIE_SECURE = _env_bool('SESSION_COOKIE_SECURE', default=not DEBUG)
-CSRF_COOKIE_SECURE = _env_bool('CSRF_COOKIE_SECURE', default=not DEBUG)
-SECURE_CONTENT_TYPE_NOSNIFF = True
-SECURE_BROWSER_XSS_FILTER = True
-X_FRAME_OPTIONS = 'DENY'
-SECURE_SSL_REDIRECT = _env_bool('SECURE_SSL_REDIRECT', default=False)
-SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0'))
-SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=False)
-SECURE_HSTS_PRELOAD = _env_bool('SECURE_HSTS_PRELOAD', default=False)
-
-# ── File-based cache ───────────────────────────────────────────────
-# /tmp/caregap_cache is world-writable and works for both local dev
-# and HF Spaces (non-root uid=1000 cannot write to /app/cache).
-_default_cache_dir = Path(os.environ.get('CARE_GAP_CACHE_DIR', '/tmp/caregap_cache'))
-if _default_cache_dir.exists() and not _default_cache_dir.is_dir():
-    _default_cache_dir = BASE_DIR / 'cache'
-try:
-    _default_cache_dir.mkdir(parents=True, exist_ok=True)
-except FileExistsError:
-    _default_cache_dir = BASE_DIR / 'cache'
-    _default_cache_dir.mkdir(parents=True, exist_ok=True)
-
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
-        'LOCATION': str(_default_cache_dir),
-        'TIMEOUT': 300,
-        'OPTIONS': {'MAX_ENTRIES': 200},
+if ENTERPRISE_MODE:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': os.environ.get('REDIS_URL', 'redis://localhost:6379/1'),
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            }
+        }
     }
-}
+    CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/2')
+    CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://localhost:6379/3')
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+            'LOCATION': str(BASE_DIR / 'cache'),
+            'TIMEOUT': 300,
+            'OPTIONS': {'MAX_ENTRIES': 200},
+        }
+    }
+    CELERY_BROKER_URL = 'memory://'
+    CELERY_RESULT_BACKEND = 'db+sqlite:///results.sqlite'
 
-# ── Synthea CSV data directory ─────────────────────────────────────
-# Override by setting SYNTHEA_DATA_DIR env var, otherwise defaults
-# to the relative path data/synthea_ca_seed43438_p30000/
+OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
+OLLAMA_MODEL    = os.environ.get('OLLAMA_MODEL', 'phi3:latest')
+
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+
+HF_API_TOKEN = os.environ.get('HF_API_TOKEN', '')
+
+FAISS_INDEX_PATH = BASE_DIR / 'rag' / 'faiss_index'
+
 SYNTHEA_DATA_DIR = os.environ.get(
     'SYNTHEA_DATA_DIR',
     str(BASE_DIR / 'data' / 'synthea_ca_seed43438_p30000'),
 )
-
-# ── HuggingFace Inference API ──────────────────────────────────────
-HF_API_TOKEN = os.environ.get('HF_API_TOKEN', '')
-
-# ── Ollama / LLaMA settings (legacy — superseded by HF API) ───────
-OLLAMA_BASE_URL = os.environ.get('OLLAMA_URL', 'http://localhost:11434')
-OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'phi3:latest')
-
-# ── FAISS vector index path ────────────────────────────────────────
-MEDGEMMA_URL = os.environ.get('MEDGEMMA_URL', '')
-MEDGEMMA_MODEL = os.environ.get('MEDGEMMA_MODEL', 'google/medgemma-1.5-4b-it')
-FAISS_INDEX_PATH = BASE_DIR / 'rag' / 'faiss_index'
-
-if DEPLOYMENT_MODE not in {'internal', 'demo'}:
-    raise RuntimeError("DEPLOYMENT_MODE must be 'internal' or 'demo'.")
-
-if ENVIRONMENT == 'production' and SECRET_KEY == 'caregap-dev-secret-key-change-in-production':
-    raise RuntimeError('Set SECRET_KEY in the environment for production deployments.')
