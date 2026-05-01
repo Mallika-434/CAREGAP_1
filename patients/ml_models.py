@@ -766,3 +766,76 @@ def predict_sbp_trajectory(observations):
     """Returns (predicted_sbp_6mo, trend_label, slope_per_day)."""
     r = predict_multi_sbp_trajectory(observations)
     return r['lasso'], r['trend'], r['slope']
+
+
+# ── Pediatric BMI Assessment ──────────────────────────────────────────────────
+_CDC_BMI_THRESHOLDS = {
+    '2-5':   (14.0, 17.0, 18.5),
+    '6-11':  (14.5, 19.0, 21.5),
+    '12-17': (16.0, 22.0, 26.0),
+}
+
+def assess_pediatric_bmi(patient, observations):
+    """
+    CDC age/gender-adjusted pediatric BMI assessment.
+    Returns dict with bmi, age, gender, age_group, category, thresholds, note.
+    """
+    from datetime import date as _date
+
+    today = _date.today()
+    birth = _to_date(patient.birthdate) if patient.birthdate else None
+    age = (today - birth).days // 365 if birth else None
+
+    age_group = None
+    if age is not None:
+        if 2 <= age <= 5:
+            age_group = '2-5'
+        elif 6 <= age <= 11:
+            age_group = '6-11'
+        elif 12 <= age <= 17:
+            age_group = '12-17'
+
+    LOINC_BMI_CODES = {'39156-5', '89270-3'}
+    bmi_obs = [
+        o for o in observations
+        if getattr(o, 'code', None) in LOINC_BMI_CODES
+        and o.value is not None
+    ]
+    bmi_obs.sort(key=lambda o: _to_date(o.date) if o.date else _date.min, reverse=True)
+    bmi = float(bmi_obs[0].value) if bmi_obs else None
+
+    gender = 'M' if getattr(patient, 'gender', '').upper() in ('M', 'MALE') else 'F'
+    gender_adj = 0.5 if gender == 'M' else 0.0
+
+    if age_group is None or bmi is None:
+        return {
+            'bmi': bmi, 'age': age, 'gender': gender,
+            'age_group': age_group, 'category': 'Unknown',
+            'thresholds': {}, 'note': 'Insufficient data for BMI assessment.',
+        }
+
+    base = _CDC_BMI_THRESHOLDS[age_group]
+    thresholds = {
+        'underweight': round(base[0] + gender_adj, 1),
+        'healthy':     round(base[1] + gender_adj, 1),
+        'overweight':  round(base[2] + gender_adj, 1),
+    }
+
+    if bmi < thresholds['underweight']:
+        category = 'Underweight'
+        note = 'BMI is below the healthy range. Consider nutritional assessment.'
+    elif bmi < thresholds['healthy']:
+        category = 'Healthy'
+        note = 'BMI is within the healthy range for this age and gender.'
+    elif bmi < thresholds['overweight']:
+        category = 'Overweight'
+        note = 'BMI is above the healthy range. Recommend dietary and activity review.'
+    else:
+        category = 'Obese'
+        note = 'BMI indicates obesity. Clinical intervention and follow-up recommended.'
+
+    return {
+        'bmi': round(bmi, 1), 'age': age, 'gender': gender,
+        'age_group': age_group, 'category': category,
+        'thresholds': thresholds, 'note': note,
+    }
