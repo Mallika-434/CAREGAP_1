@@ -949,7 +949,21 @@
           if (d.error === 'not_available' || d.cohort === 'at_risk') {
             fetch(`/api/patients/${id}/onset-risk/`)
               .then(r => r.json())
-              .then(od => { res.innerHTML = _renderAtRiskOnset(od); })
+              .then(od => {
+                res.innerHTML = _renderAtRiskOnset(od);
+                fetch('/api/rag/explain/', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                  body: JSON.stringify({ patient_id: od.patient_id, prediction_data: od })
+                })
+                .then(r => r.json())
+                .then(explainData => {
+                  const el = document.getElementById('inline-layman-explanation');
+                  if (el && explainData.explanation)
+                    el.innerHTML = `<div style="font-weight:600;color:var(--purple);margin-bottom:4px">Layman Risk Summary</div><div>${explainData.explanation.replace(/\n/g,'<br>')}</div>`;
+                })
+                .catch(() => { const el = document.getElementById('inline-layman-explanation'); if (el) el.style.display='none'; });
+              })
               .catch(() => { res.innerHTML = `<div style="padding:20px;color:var(--red);text-align:center">Onset risk data unavailable.</div>`; });
             return;
           }
@@ -1413,29 +1427,114 @@
       const t2d = or.t2d || {};
       const htnProb = Math.round(htn.ensemble || 0);
       const t2dProb = Math.round(t2d.ensemble || 0);
-      const _c = p => p >= 60 ? 'var(--red)' : p >= 30 ? 'var(--amber)' : 'var(--green)';
+      const avgProb = Math.round((htnProb + t2dProb) / 2);
+      const feats = or.features || {};
+      const age = feats.age || '';
+
+      const _c = p => p >= 75 ? 'var(--red)' : p >= 40 ? 'var(--amber)' : 'var(--green)';
+      const color = _c(avgProb);
+
+      const htnLasso = Math.round(htn.lasso || 0);
+      const htnRF    = Math.round(htn.random_forest || 0);
+      const htnXGB   = Math.round(htn.gradient_boosting || 0);
+      const t2dLasso = Math.round(t2d.lasso || 0);
+      const t2dRF    = Math.round(t2d.random_forest || 0);
+      const t2dXGB   = Math.round(t2d.gradient_boosting || 0);
+
+      const recText = avgProb >= 70 ? 'Immediate intervention recommended'
+                    : avgProb >= 40 ? 'Schedule follow-up within 30 days'
+                    : 'Continue preventive care plan';
 
       return `
-        <div style="background:var(--bg3); padding:14px 16px; border-radius:8px; border:1px solid var(--border2); margin-bottom:16px">
-          <div style="font-size:.95rem; font-weight:600;">${d.name || d.patient_name || ''}</div>
-          <div style="font-size:.72rem; color:var(--text3);">Adult At-Risk · Disease Onset Risk Assessment</div>
-        </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
-          <div class="panel" style="border-top:3px solid ${_c(htnProb)}; padding:16px;">
-            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:6px;">HTN Onset Risk</div>
-            <div style="font-size:2rem;font-weight:700;color:${_c(htnProb)}">${htnProb}%</div>
-            <div style="font-size:.72rem;color:var(--text2);margin-top:4px;">Ensemble · Range ${Math.round(htn.range_min||0)}–${Math.round(htn.range_max||0)}%</div>
-            <div style="margin-top:8px;font-size:.72rem;color:var(--text3);">Lasso ${Math.round(htn.lasso||0)}% · RF ${Math.round(htn.random_forest||0)}% · XGB ${Math.round(htn.gradient_boosting||0)}%</div>
-          </div>
-          <div class="panel" style="border-top:3px solid ${_c(t2dProb)}; padding:16px;">
-            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:6px;">T2D Onset Risk</div>
-            <div style="font-size:2rem;font-weight:700;color:${_c(t2dProb)}">${t2dProb}%</div>
-            <div style="font-size:.72rem;color:var(--text2);margin-top:4px;">Ensemble · Range ${Math.round(t2d.range_min||0)}–${Math.round(t2d.range_max||0)}%</div>
-            <div style="margin-top:8px;font-size:.72rem;color:var(--text3);">Lasso ${Math.round(t2d.lasso||0)}% · RF ${Math.round(t2d.random_forest||0)}% · XGB ${Math.round(t2d.gradient_boosting||0)}%</div>
+        <div style="background:var(--bg3);padding:14px 16px;border-radius:8px;border:1px solid var(--border2);margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-size:.95rem;font-weight:600;color:var(--text);margin-bottom:3px">${d.name || ''}</div>
+              <div style="font-size:.72rem;color:var(--text3)">${age ? age + 'y · ' : ''}At-Risk · Disease Onset Assessment · ID: ${d.patient_id}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:1.8rem;font-weight:700;color:${color}">${avgProb}%</div>
+              <div style="font-size:.65rem;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Avg Onset Risk</div>
+            </div>
           </div>
         </div>
-        <div style="margin-top:12px; display:flex; gap:10px;">
-          <button class="btn btn-primary" onclick='explainPrediction("${d.patient_id}", ${JSON.stringify(d).replace(/'/g, "&apos;")})'>Explain This AI Result</button>
+
+        <div id="inline-layman-explanation" style="background:var(--bg2);border-left:4px solid var(--purple);border-radius:4px;padding:12px 16px;margin-bottom:16px;font-size:0.8rem;color:var(--text2);">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="spin" style="width:12px;height:12px;border-width:2px;border-color:var(--purple) transparent var(--purple) transparent;"></div>
+            <span style="font-style:italic;">AI generating specific layman summary...</span>
+          </div>
+        </div>
+
+        <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:20px;margin-top:16px;overflow-x:auto;">
+          <div style="font-size:.9rem;font-weight:700;color:var(--text);text-transform:uppercase;margin-bottom:16px;letter-spacing:0.1em;display:flex;align-items:center;gap:8px;">
+            <span style="font-size:1.2rem;">🧠</span> Onset Risk Model Scores
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:0.8rem;text-align:left;white-space:nowrap;">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border2);color:var(--text3);text-transform:uppercase;font-size:0.7rem;letter-spacing:0.05em;">
+                <th style="padding:10px 12px;width:22%;">Architecture</th>
+                <th style="padding:10px 12px;width:30%;white-space:normal;">Methodology & Behavior</th>
+                <th style="padding:10px 12px;width:24%;vertical-align:top;">HTN Onset Score<br><span style="font-size:.65rem;color:var(--text3);text-transform:none;font-weight:400;display:block;margin-top:4px;white-space:normal;">Hypertension onset risk from this model.</span></th>
+                <th style="padding:10px 12px;width:24%;vertical-align:top;">T2D Onset Score<br><span style="font-size:.65rem;color:var(--text3);text-transform:none;font-weight:400;display:block;margin-top:4px;white-space:normal;">Type 2 Diabetes onset risk from this model.</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid var(--border2);background:var(--surface);">
+                <td style="padding:14px 12px;font-weight:700;color:var(--blue);">Lasso Regression</td>
+                <td style="padding:14px 12px;color:var(--text2);font-size:0.75rem;white-space:normal;">Linear risks. Capable of saturating at 100% on high-risk baselines.</td>
+                <td style="padding:14px 12px;font-size:1.1rem;font-weight:700;color:${htnLasso >= 60 ? 'var(--red)' : htnLasso >= 40 ? 'var(--amber)' : 'var(--green)'}">${htnLasso}%</td>
+                <td style="padding:14px 12px;font-size:1.1rem;font-weight:700;color:${t2dLasso >= 60 ? 'var(--red)' : t2dLasso >= 40 ? 'var(--amber)' : 'var(--green)'}">${t2dLasso}%</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--border2);background:var(--bg3);">
+                <td style="padding:14px 12px;font-weight:700;color:var(--green);">Random Forest</td>
+                <td style="padding:14px 12px;color:var(--text2);font-size:0.75rem;white-space:normal;">Tree ensemble. Evaluates conservative, non-linear pathway averages.</td>
+                <td style="padding:14px 12px;font-size:1.1rem;font-weight:700;color:${htnRF >= 60 ? 'var(--red)' : htnRF >= 40 ? 'var(--amber)' : 'var(--green)'}">${htnRF}%</td>
+                <td style="padding:14px 12px;font-size:1.1rem;font-weight:700;color:${t2dRF >= 60 ? 'var(--red)' : t2dRF >= 40 ? 'var(--amber)' : 'var(--green)'}">${t2dRF}%</td>
+              </tr>
+              <tr style="background:var(--surface);">
+                <td style="padding:14px 12px;font-weight:700;color:var(--red);">XGBoost</td>
+                <td style="padding:14px 12px;color:var(--text2);font-size:0.75rem;white-space:normal;">Aggressive logic interactions. Identifies critical gatekeeper vitals instantly.</td>
+                <td style="padding:14px 12px;font-size:1.1rem;font-weight:700;color:${htnXGB >= 60 ? 'var(--red)' : htnXGB >= 40 ? 'var(--amber)' : 'var(--green)'}">${htnXGB}%</td>
+                <td style="padding:14px 12px;font-size:1.1rem;font-weight:700;color:${t2dXGB >= 60 ? 'var(--red)' : t2dXGB >= 40 ? 'var(--amber)' : 'var(--green)'}">${t2dXGB}%</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style="margin-top:16px;">
+            <div style="font-size:.7rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Risk Attribution (Onset Level)</div>
+            <div style="display:flex;gap:12px;">
+              <div style="flex:1;padding:14px 16px;border-radius:8px;background:${_c(htnProb)}18;border:1px solid ${_c(htnProb)}44;">
+                <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:6px;">HTN Onset Risk</div>
+                <div style="font-size:1.8rem;font-weight:700;color:${_c(htnProb)}">${htnProb}%</div>
+                <div style="font-size:.72rem;color:var(--text2);margin-top:4px;">Ensemble · Range ${Math.round(htn.range_min||0)}–${Math.round(htn.range_max||0)}%</div>
+              </div>
+              <div style="flex:1;padding:14px 16px;border-radius:8px;background:${_c(t2dProb)}18;border:1px solid ${_c(t2dProb)}44;">
+                <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:6px;">T2D Onset Risk</div>
+                <div style="font-size:1.8rem;font-weight:700;color:${_c(t2dProb)}">${t2dProb}%</div>
+                <div style="font-size:.72rem;color:var(--text2);margin-top:4px;">Ensemble · Range ${Math.round(t2d.range_min||0)}–${Math.round(t2d.range_max||0)}%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;padding:12px;background:${color}15;border-radius:8px;color:${color};font-size:.85rem;font-weight:500;border:1px solid ${color}33">
+          <span style="margin-right:6px">ⓘ</span> ${recText}
+        </div>
+
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <button class="btn btn-primary" onclick='explainPrediction("${d.patient_id}", ${JSON.stringify(d).replace(/'/g, "&apos;")})'>Explain This AI Result</button>
+          </div>
+          <div style="background:var(--bg2);padding:14px;border-radius:8px;border:1px solid var(--border);">
+            <div style="font-size:0.75rem;font-weight:600;color:var(--text);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;">💬 Quick AI Prompts (At-Risk Onset)</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+              <button class="btn btn-outline" style="font-size:0.7rem;padding:6px 10px;background:var(--surface);" onclick="sendGlobalChat('What lifestyle interventions most effectively reduce hypertension onset risk for a patient with these vitals?')">HTN Prevention</button>
+              <button class="btn btn-outline" style="font-size:0.7rem;padding:6px 10px;background:var(--surface);" onclick="sendGlobalChat('What dietary and exercise changes have the highest evidence base for preventing Type 2 Diabetes onset in an at-risk patient?')">T2D Prevention</button>
+              <button class="btn btn-outline" style="font-size:0.7rem;padding:6px 10px;background:var(--surface);" onclick="sendGlobalChat('Why does the Lasso model produce a higher onset risk score than the Random Forest model for this patient?')">Model Explainability</button>
+              <button class="btn btn-outline" style="font-size:0.7rem;padding:6px 10px;background:var(--surface);" onclick="sendGlobalChat('What is the recommended follow-up cadence for an at-risk patient with this level of predicted hypertension and diabetes onset risk?')">Care Cadence</button>
+            </div>
+          </div>
         </div>
       `;
     }
