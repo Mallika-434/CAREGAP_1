@@ -3,18 +3,19 @@ Management command: precompute_forecast
 ────────────────────────────────────────
 Pre-computes triage queue and resource forecast, stores results in:
   - Django cache  (triage_list key, TTL 300 s)
-  - patients/data/triage_cache.json
-  - patients/data/forecast_cache.json
+  - patients/data/triage_cache.json  + triage_cache.pkl
+  - patients/data/forecast_cache.json + forecast_cache.pkl
+
+The .pkl files are read by the resource_forecast view for fast,
+cache-expiry-proof serving.
 
 Usage:
     python manage.py precompute_forecast
-
-Run once after seed/import to guarantee the first dashboard
-Action-Required load shows real numbers instead of zeros.
 """
 
 import json
 import os
+import pickle
 import time
 
 from django.core.management.base import BaseCommand
@@ -49,6 +50,11 @@ class Command(BaseCommand):
             json.dump(triage, f, default=str, indent=2)
         self.stdout.write(f'  Saved -> {triage_path}')
 
+        triage_pkl = os.path.join(DATA_DIR, 'triage_cache.pkl')
+        with open(triage_pkl, 'wb') as f:
+            pickle.dump(triage, f)
+        self.stdout.write(f'  Saved -> {triage_pkl}')
+
         # ── Forecast ──────────────────────────────────────────────────
         self.stdout.write('Computing resource forecast…', ending=' ')
         self.stdout.flush()
@@ -70,6 +76,11 @@ class Command(BaseCommand):
         with open(forecast_path, 'w') as f:
             json.dump(forecast, f, indent=2)
         self.stdout.write(f'  Saved -> {forecast_path}')
+
+        forecast_pkl = os.path.join(DATA_DIR, 'forecast_cache.pkl')
+        with open(forecast_pkl, 'wb') as f:
+            pickle.dump(forecast, f)
+        self.stdout.write(f'  Saved -> {forecast_pkl}')
 
         self.stdout.write(self.style.SUCCESS(
             '\nForecast pre-computed. Dashboard Action Required section will show live numbers.'

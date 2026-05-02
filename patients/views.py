@@ -7,6 +7,7 @@ GET  /api/patients/<patient_id>/risk/        → risk assessment result
 GET  /api/patients/<patient_id>/urgent-care/ → nearby urgent cares (HIGH risk)
 """
 
+import logging
 from datetime import timedelta
 
 from django.db.models import Count, Exists, FloatField, Max, OuterRef, Sum, IntegerField
@@ -16,6 +17,8 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+
+logger = logging.getLogger(__name__)
 
 from .analytics_services import get_analytics_payload
 from .models import Patient, Observation, Encounter, Condition, Medication
@@ -354,4 +357,48 @@ def triage_list(request):
 
 @api_view(['GET'])
 def resource_forecast(request):
-    return Response(get_resource_forecast_payload())
+    import os
+    import pickle
+    from .forecaster import forecast_resources
+
+    cache_path = os.path.join('patients', 'data', 'forecast_cache.pkl')
+    triage_path = os.path.join('patients', 'data', 'triage_cache.pkl')
+
+    # Try pickle cache first (fastest)
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, 'rb') as f:
+                data = pickle.load(f)
+            if 'high_risk_volume' not in data and 'risk_breakdown' in data:
+                rb = data['risk_breakdown']
+                data['high_risk_volume'] = (
+                    rb.get('emergency', 0) + rb.get('high', 0) +
+                    rb.get('moderate', 0) + rb.get('elevated', 0)
+                )
+            return Response(data)
+        except Exception as e:
+            logger.error("Failed to load forecast cache: %s", e)
+
+    # Fallback: compute from triage pickle if available
+    if os.path.exists(triage_path):
+        try:
+            with open(triage_path, 'rb') as f:
+                triage_data = pickle.load(f)
+            risk_breakdown = triage_data.get('risk_breakdown', {})
+            result = forecast_resources(risk_breakdown)
+            result['generated_at'] = timezone.now().isoformat()
+            return Response(result)
+        except Exception as e:
+            logger.error("Failed to compute forecast from triage cache: %s", e)
+
+    # Final fallback: compute on demand from Django ORM
+    try:
+        payload = get_resource_forecast_payload()
+        return Response(payload)
+    except Exception as e:
+        logger.error("Failed to compute forecast on demand: %s", e)
+        return Response({
+            'error': 'Forecast unavailable.',
+            'generated_at': timezone.now().isoformat(),
+            'resources': {}
+        }, status=503)
