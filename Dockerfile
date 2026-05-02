@@ -26,18 +26,32 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ── Application files ─────────────────────────────────────────────
 COPY --chown=user:user . .
 
-# Pre-build FAISS index at image build time so it is always available.
+# ── Build-time database setup ─────────────────────────────────────
+# 1. Create tables (produces db_demo.sqlite3)
+RUN python manage.py migrate --no-input
+
+# 2. Seed 8 demo patients so train_models has data at first startup
+RUN python manage.py seed_demo_data
+
+# 3. Build FAISS knowledge index (reads static knowledge files, not DB)
 RUN python manage.py build_rag_index || true
 
-# Collect static assets for WhiteNoise to serve
+# 4. Collect static assets for WhiteNoise
 RUN python manage.py collectstatic --no-input
+
+# Fix ownership: build-time RUN commands run as root, so db and
+# generated files must be re-chowned before switching to non-root user
+RUN chown -R user:user /app
 
 # Switch to non-root user
 USER user
 
 EXPOSE 7860
 
-# migrate → train models + warm cache → gunicorn
+# At container startup:
+#   migrate  — no-op on normal restarts; picks up any new migrations on redeploy
+#   setup_demo — trains ML models on seeded data + warms dashboard cache
+#   gunicorn — serves the app
 CMD python manage.py migrate --no-input && \
     python manage.py setup_demo && \
     exec gunicorn caregap.wsgi:application \
