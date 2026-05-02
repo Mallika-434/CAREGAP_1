@@ -42,7 +42,33 @@ def _score_triage_patients(patient_rows):
         row['risk_drivers'] = ' · '.join(drivers) if drivers else 'Elevated Risk'
 
         patient = patient_objs.get(pid)
-        if not patient or patient.cohort not in ('chronic', 'at_risk'):
+        if not patient:
+            row['probability'] = None
+            row['model_available'] = False
+            continue
+
+        # Pediatric patients: BMI category + SBP-based probability
+        if patient.cohort == 'pediatric':
+            try:
+                from .ml_models import assess_pediatric_bmi
+                observations = list(patient.observations.all())
+                ped = assess_pediatric_bmi(patient, observations)
+                category = ped.get('category', 'Unknown') if ped else 'Unknown'
+            except Exception:
+                category = 'Unknown'
+            sbp = row.get('sbp') or 0
+            prob = 0.80 if sbp >= 160 else 0.50 if sbp >= 140 else 0.20
+            row['probability']     = prob
+            row['model_available'] = True
+            row['risk_tier']       = 'pediatric'
+            row['risk_label']      = category
+            row['risk_drivers']    = (
+                f'Pediatric · {category}' +
+                (f' · SBP {int(sbp)} mmHg' if sbp >= 140 else '')
+            )
+            continue
+
+        if patient.cohort not in ('chronic', 'at_risk'):
             row['probability'] = None
             row['model_available'] = False
             continue

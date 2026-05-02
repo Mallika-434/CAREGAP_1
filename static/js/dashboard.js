@@ -611,7 +611,8 @@
       loadResourceForecast();
     }
 
-    function _formatRiskBadge(prob, available) {
+    function _formatRiskBadge(prob, available, tier, label) {
+      if (tier === 'pediatric') return `<span style="font-weight:600;color:var(--amber)">${label || 'Pediatric'}</span>`;
       if (prob == null) return `<span class="tag tag-gray">ML pending</span>`;
       const percent = Math.round(prob * 100);
       const color = prob >= 0.75 ? 'var(--red)' : prob >= 0.60 ? 'var(--amber)' : 'var(--accent)';
@@ -648,7 +649,7 @@
                   <td style="padding:12px 14px;color:${p.sbp >= 160 ? 'var(--red)' : 'inherit'}">${p.sbp || '—'} mmHg</td>
                   <td style="padding:12px 14px;color:var(--text3);font-size:.75rem">${p.risk_drivers || 'Elevated Risk'}</td>
                   <td style="padding:12px 14px;text-align:center">
-                    ${_formatRiskBadge(p.probability, p.model_available)}
+                    ${_formatRiskBadge(p.probability, p.model_available, p.risk_tier, p.risk_label)}
                   </td>
                   <td style="padding:12px 14px;text-align:right">
                     <button class="btn btn-outline" style="padding:6px 12px;font-size:.75rem" onclick="loadPatientView('${p.patient_id}')">View Profile</button>
@@ -683,7 +684,7 @@
                   <td style="padding:12px 14px">${p.sbp || '—'} mmHg</td>
                   <td style="padding:12px 14px;color:var(--text3);font-size:.72rem">${p.risk_drivers || 'Rising Risk'}</td>
                   <td style="padding:12px 14px;text-align:center">
-                    ${_formatRiskBadge(p.probability, p.model_available)}
+                    ${_formatRiskBadge(p.probability, p.model_available, p.risk_tier, p.risk_label)}
                   </td>
                   <td style="padding:12px 14px;text-align:right">
                     <button class="btn btn-outline" style="padding:6px 12px;font-size:.75rem" onclick="loadPatientView('${p.patient_id}')">View Profile</button>
