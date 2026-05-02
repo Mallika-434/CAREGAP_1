@@ -208,9 +208,11 @@ def get_triage_payload():
 
     urgent_pids -= critical_pids
 
+    two_years_ago = current_date.today() - timedelta(days=730)
+
     def _fetch_patients(pids, tier, limit=50):
         rows = (
-            Patient.objects.filter(patient_id__in=list(pids)[:limit])
+            Patient.objects.filter(patient_id__in=list(pids)[:limit], birthdate__lte=two_years_ago)
             .values("patient_id", "first", "last", "birthdate", "city")
         )
         result = []
@@ -231,7 +233,7 @@ def get_triage_payload():
 
     def _fetch_urgent(pids, limit=50):
         rows = (
-            Patient.objects.filter(patient_id__in=list(pids))
+            Patient.objects.filter(patient_id__in=list(pids), birthdate__lte=two_years_ago)
             .values("patient_id", "first", "last", "birthdate", "city")
         )
         result = []

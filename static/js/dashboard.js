@@ -615,7 +615,7 @@
       if (tier === 'pediatric') return `<span style="font-weight:600;color:var(--amber)">${label || 'Pediatric'}</span>`;
       if (prob == null) return `<span class="tag tag-gray">ML pending</span>`;
       const percent = Math.round(prob * 100);
-      const color = prob >= 0.75 ? 'var(--red)' : prob >= 0.60 ? 'var(--amber)' : 'var(--accent)';
+      const color = prob >= 0.75 ? 'var(--red)' : prob >= 0.40 ? 'var(--amber)' : 'var(--green)';
       const fallback = available ? '' : ' <span style="color:var(--text3);font-size:.65rem">(fallback)</span>';
       return `<span style="font-weight:600;color:${color}">${percent}%</span>${fallback}`;
     }

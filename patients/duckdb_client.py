@@ -380,6 +380,7 @@ def get_triage_list():
            (SELECT MAX(DATE) FROM observations WHERE PATIENT = p.Id AND CODE = '{LOINC_HBA1C}') AS last_hba1c_date
     FROM patients p
     WHERE p.DEATHDATE IS NULL
+    AND date_diff('year', cast(p.BIRTHDATE as date), current_date) >= 2
     """
     emergency_sql = f"""
     {select_sql}
