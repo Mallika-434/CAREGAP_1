@@ -946,8 +946,16 @@
       fetch(`/api/patients/${id}/predict/`)
         .then(r => r.json())
         .then(d => {
+          if (d.error === 'not_applicable') {
+            res.innerHTML = `<div style="padding:24px;background:var(--bg3);border:1px solid var(--border2);border-radius:12px;text-align:center;color:var(--text2);font-size:.9rem;line-height:1.6;">Prediction models are not applicable for pediatric patients.</div>`;
+            return;
+          }
+          if (d.error === 'not_available') {
+            res.innerHTML = `<div style="padding:24px;background:var(--bg3);border:1px solid var(--border2);border-radius:12px;text-align:center;color:var(--text2);font-size:.9rem;line-height:1.6;">This patient is in the at-risk cohort. The 6-month prediction model is designed for chronic patients. Use the patient profile page to view their Disease Onset Risk instead.</div>`;
+            return;
+          }
           if (d.error) {
-            res.innerHTML = `<div style="padding:20px;color:var(--red);text-align:center">${d.error}</div>`;
+            res.innerHTML = `<div style="padding:20px;color:var(--red);text-align:center">${d.message || d.error}</div>`;
             return;
           }
 
