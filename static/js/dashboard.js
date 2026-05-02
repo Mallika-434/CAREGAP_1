@@ -951,16 +951,28 @@
               .then(r => r.json())
               .then(od => {
                 res.innerHTML = _renderAtRiskOnset(od);
-                fetch('/api/rag/explain/', {
+                const _or = od.onset_risk || {};
+                const _htn = _or.htn || {};
+                const _t2d = _or.t2d || {};
+                const _feats = _or.features || {};
+                const _age = _feats.age || 'unknown';
+                const _gender = _feats.gender_m === 1 ? 'male' : 'female';
+                const _htnProb = Math.round(_htn.ensemble || 0);
+                const _t2dProb = Math.round(_t2d.ensemble || 0);
+                const _avgProb = Math.round((_htnProb + _t2dProb) / 2);
+                const _htnScores = { lasso: Math.round(_htn.lasso||0), rf: Math.round(_htn.random_forest||0), xgb: Math.round(_htn.gradient_boosting||0) };
+                const _t2dScores = { lasso: Math.round(_t2d.lasso||0), rf: Math.round(_t2d.random_forest||0), xgb: Math.round(_t2d.gradient_boosting||0) };
+                const _question = `This patient is ${_age} years old, ${_gender}, at-risk cohort. Disease onset risk scores: HTN ensemble ${_htnProb}% (Lasso ${_htnScores.lasso}%, RF ${_htnScores.rf}%, XGBoost ${_htnScores.xgb}%), T2D ensemble ${_t2dProb}% (Lasso ${_t2dScores.lasso}%, RF ${_t2dScores.rf}%, XGBoost ${_t2dScores.xgb}%). Average onset risk: ${_avgProb}%. Explain this to a non-technical care coordinator in 2-3 sentences. Focus on what the scores mean and what action to take.`;
+                fetch('/api/rag/ask/', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-                  body: JSON.stringify({ patient_id: od.patient_id, prediction_data: od })
+                  body: JSON.stringify({ patient_id: od.patient_id, question: _question })
                 })
                 .then(r => r.json())
-                .then(explainData => {
+                .then(askData => {
                   const el = document.getElementById('inline-layman-explanation');
-                  if (el && explainData.explanation)
-                    el.innerHTML = `<div style="font-weight:600;color:var(--purple);margin-bottom:4px">Layman Risk Summary</div><div>${explainData.explanation.replace(/\n/g,'<br>')}</div>`;
+                  if (el && askData.answer)
+                    el.innerHTML = `<div style="font-weight:600;color:var(--purple);margin-bottom:4px">Layman Risk Summary</div><div>${askData.answer.replace(/\n/g,'<br>')}</div>`;
                 })
                 .catch(() => { const el = document.getElementById('inline-layman-explanation'); if (el) el.style.display='none'; });
               })
