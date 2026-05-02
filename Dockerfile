@@ -54,6 +54,7 @@ EXPOSE 7860
 #   gunicorn — serves the app
 CMD python manage.py migrate --no-input && \
     python manage.py setup_demo && \
+    python manage.py precompute_forecast && \
     exec gunicorn caregap.wsgi:application \
         --bind 0.0.0.0:7860 \
         --workers 1 \
