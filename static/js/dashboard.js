@@ -946,25 +946,22 @@
       fetch(`/api/patients/${id}/predict/`)
         .then(r => r.json())
         .then(d => {
-          if (d.error === 'not_applicable') {
-            res.innerHTML = `<div style="padding:24px;background:var(--bg3);border:1px solid var(--border2);border-radius:12px;text-align:center;color:var(--text2);font-size:.9rem;line-height:1.6;">Prediction models are not applicable for pediatric patients.</div>`;
+          if (d.error === 'not_available' || d.cohort === 'at_risk') {
+            fetch(`/api/patients/${id}/onset-risk/`)
+              .then(r => r.json())
+              .then(od => { res.innerHTML = _renderAtRiskOnset(od); })
+              .catch(() => { res.innerHTML = `<div style="padding:20px;color:var(--red);text-align:center">Onset risk data unavailable.</div>`; });
             return;
           }
-          if (d.error === 'not_available') {
-            res.innerHTML = `<div style="padding:24px;background:var(--bg3);border:1px solid var(--border2);border-radius:12px;text-align:center;color:var(--text2);font-size:.9rem;line-height:1.6;">This patient is in the at-risk cohort. The 6-month prediction model is designed for chronic patients. Use the patient profile page to view their Disease Onset Risk instead.</div>`;
+          if (d.error === 'not_applicable' || d.cohort === 'pediatric') {
+            fetch(`/api/patients/${id}/bmi-assessment/`)
+              .then(r => r.json())
+              .then(bd => { res.innerHTML = _renderPediatricBMI(bd); })
+              .catch(() => { res.innerHTML = `<div style="padding:20px;color:var(--red);text-align:center">BMI assessment unavailable.</div>`; });
             return;
           }
           if (d.error) {
             res.innerHTML = `<div style="padding:20px;color:var(--red);text-align:center">${d.message || d.error}</div>`;
-            return;
-          }
-
-          if (d.cohort === 'at_risk') {
-            res.innerHTML = _renderAtRiskOnset(d);
-            return;
-          }
-          if (d.cohort === 'pediatric') {
-            res.innerHTML = _renderPediatricBMI(d);
             return;
           }
 
@@ -1411,87 +1408,69 @@
 
     // ─── Multi-Cohort Prediction Extensions ───
     function _renderAtRiskOnset(d) {
-      const prob = Math.round(d.onset_probability * 100);
-      const color = prob >= 60 ? 'var(--red)' : (prob >= 30 ? 'var(--amber)' : 'var(--green)');
+      const or = d.onset_risk || {};
+      const htn = or.htn || {};
+      const t2d = or.t2d || {};
+      const htnProb = Math.round(htn.ensemble || 0);
+      const t2dProb = Math.round(t2d.ensemble || 0);
+      const _c = p => p >= 60 ? 'var(--red)' : p >= 30 ? 'var(--amber)' : 'var(--green)';
 
       return `
         <div style="background:var(--bg3); padding:14px 16px; border-radius:8px; border:1px solid var(--border2); margin-bottom:16px">
-          <div style="display:flex; justify-content:space-between; align-items:center">
-            <div>
-              <div style="font-size:.95rem; font-weight:600;">${d.patient_name}</div>
-              <div style="font-size:.72rem; color:var(--text3);">Adult At-Risk · No Chronic History</div>
-            </div>
-            <div style="text-align:right">
-              <div style="font-size:1.8rem; font-weight:700; color:${color}">${prob}%</div>
-              <div style="font-size:.65rem; color:var(--text3); text-transform:uppercase;">Onset Risk</div>
-            </div>
+          <div style="font-size:.95rem; font-weight:600;">${d.name || d.patient_name || ''}</div>
+          <div style="font-size:.72rem; color:var(--text3);">Adult At-Risk · Disease Onset Risk Assessment</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+          <div class="panel" style="border-top:3px solid ${_c(htnProb)}; padding:16px;">
+            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:6px;">HTN Onset Risk</div>
+            <div style="font-size:2rem;font-weight:700;color:${_c(htnProb)}">${htnProb}%</div>
+            <div style="font-size:.72rem;color:var(--text2);margin-top:4px;">Ensemble · Range ${Math.round(htn.range_min||0)}–${Math.round(htn.range_max||0)}%</div>
+            <div style="margin-top:8px;font-size:.72rem;color:var(--text3);">Lasso ${Math.round(htn.lasso||0)}% · RF ${Math.round(htn.random_forest||0)}% · XGB ${Math.round(htn.gradient_boosting||0)}%</div>
+          </div>
+          <div class="panel" style="border-top:3px solid ${_c(t2dProb)}; padding:16px;">
+            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:6px;">T2D Onset Risk</div>
+            <div style="font-size:2rem;font-weight:700;color:${_c(t2dProb)}">${t2dProb}%</div>
+            <div style="font-size:.72rem;color:var(--text2);margin-top:4px;">Ensemble · Range ${Math.round(t2d.range_min||0)}–${Math.round(t2d.range_max||0)}%</div>
+            <div style="margin-top:8px;font-size:.72rem;color:var(--text3);">Lasso ${Math.round(t2d.lasso||0)}% · RF ${Math.round(t2d.random_forest||0)}% · XGB ${Math.round(t2d.gradient_boosting||0)}%</div>
           </div>
         </div>
-        <div class="panel" style="padding:16px; border-top: 3px solid ${color}">
-          <div style="font-size:.85rem; color:var(--text2); line-height:1.6;">${d.recommendation}</div>
-          <div style="margin-top:12px; display:flex; gap:10px;">
-             <button class="btn btn-primary" onclick='explainPrediction("${d.patient_id}", ${JSON.stringify(d)})'>Explain This AI Result</button>
-          </div>
+        <div style="margin-top:12px; display:flex; gap:10px;">
+          <button class="btn btn-primary" onclick='explainPrediction("${d.patient_id}", ${JSON.stringify(d).replace(/'/g, "&apos;")})'>Explain This AI Result</button>
         </div>
       `;
     }
 
     function _renderPediatricBMI(d) {
-      const color = d.risk_tier === 'Obesity' || d.risk_tier === 'Overweight' ? 'var(--red)' : (d.risk_tier === 'Healthy weight' ? 'var(--green)' : 'var(--amber)');
-      
-      let gapsHtml = '';
-      if (d.care_gaps && d.care_gaps.length > 0) {
-          gapsHtml = `
-            <div style="margin-bottom:16px;">
-                <div style="font-size:0.75rem; font-weight:700; color:var(--text); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">Pediatric Care Gaps</div>
-                <ul style="margin:0; padding-left:20px; font-size:0.85rem; color:var(--text2); line-height:1.5;">
-                    ${d.care_gaps.map(gap => `<li style="margin-bottom:4px; color:var(--red);">${gap}</li>`).join('')}
-                </ul>
-            </div>
-          `;
-      } else {
-          gapsHtml = `
-            <div style="margin-bottom:16px;">
-                <div style="font-size:0.75rem; font-weight:700; color:var(--text); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">Pediatric Care Gaps</div>
-                <div style="font-size:0.85rem; color:var(--text3); display:flex; align-items:center; gap:6px;">
-                   <span style="color:var(--green)">✓</span> Up-to-date on Well-Child Visits
-                </div>
-            </div>
-          `;
-      }
+      const categoryColor = { Overweight: 'var(--amber)', Obese: 'var(--red)', Underweight: 'var(--amber)', Healthy: 'var(--green)' };
+      const color = categoryColor[d.category] || 'var(--text3)';
 
       return `
         <div style="background:var(--bg3); padding:14px 16px; border-radius:8px; border:1px solid var(--border2); margin-bottom:16px">
-          <div style="font-size:.95rem; font-weight:600;">${d.patient_name} (${d.age}y ${d.gender})</div>
+          <div style="font-size:.95rem; font-weight:600;">${d.name || d.patient_name || ''} (${d.age}y ${d.gender})</div>
           <div style="font-size:.72rem; color:var(--text3);">Pediatric Cohort · CDC Growth Chart Assessment</div>
         </div>
-        
-        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:16px;">
-           <div class="vital"><div class="label">BMI</div><div class="value">${d.bmi.toFixed(1)}</div></div>
-           <div class="vital"><div class="label">Percentile (CDC)</div><div class="value">${d.percentile || 50}<sup>th</sup></div></div>
-           <div class="vital"><div class="label">Tier</div><div class="value" style="color:${color}">${d.risk_tier}</div></div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+          <div class="vital"><div class="label">BMI</div><div class="value">${d.bmi != null ? d.bmi.toFixed(1) : '—'}</div></div>
+          <div class="vital"><div class="label">Category</div><div class="value" style="color:${color}">${d.category || '—'}</div></div>
         </div>
-        
-        ${gapsHtml}
-        
+
         <div style="padding:14px; background:var(--bg2); border-radius:8px; border:1px solid var(--border); font-size:.85rem; margin-bottom:12px;">
-           <strong>Pediatric Guidance:</strong> ${d.recommendation}
+          <strong>Pediatric Guidance:</strong> ${d.recommend || d.recommendation || '—'}
         </div>
-        
+
         <div style="margin-top:12px; display:flex; flex-direction:column; gap:12px;">
-           <div>
-             <button class="btn btn-primary" onclick='explainPrediction("${d.patient_id}", ${JSON.stringify(d).replace(/'/g, "&apos;")})'>Explain This AI Result</button>
-           </div>
-           
-           <div style="background:var(--bg2); padding:14px; border-radius:8px; border:1px solid var(--border);">
-             <div style="font-size:0.75rem; font-weight:600; color:var(--text); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px;">💬 Quick AI Prompts (Pediatric)</div>
-             <div style="display:flex; flex-wrap:wrap; gap:8px;">
-               <button class="btn btn-outline" style="font-size:0.7rem; padding:6px 10px; background:var(--surface);" onclick="sendGlobalChat('Does this child\\'s BMI percentile indicate a long-term risk of early-onset Type 2 Diabetes?')">BMI Risk Trajectory</button>
-               <button class="btn btn-outline" style="font-size:0.7rem; padding:6px 10px; background:var(--surface);" onclick="sendGlobalChat('What are the standard CDC immunization requirements for a child of this age?')">Immunization Schedule</button>
-               <button class="btn btn-outline" style="font-size:0.7rem; padding:6px 10px; background:var(--surface);" onclick="sendGlobalChat('What lifestyle interventions or nutritional guidelines are most effective for improving BMI percentiles in children?')">Nutritional Interventions</button>
-               ${d.has_asthma ? `<button class="btn btn-outline" style="font-size:0.7rem; padding:6px 10px; background:var(--surface); border-color:var(--red);" onclick="sendGlobalChat('What are the standard pediatric guidelines for managing active asthma and preventing exacerbations?')">Asthma Protocol</button>` : ''}
-             </div>
-           </div>
+          <div>
+            <button class="btn btn-primary" onclick='explainPrediction("${d.patient_id}", ${JSON.stringify(d).replace(/'/g, "&apos;")})'>Explain This AI Result</button>
+          </div>
+          <div style="background:var(--bg2); padding:14px; border-radius:8px; border:1px solid var(--border);">
+            <div style="font-size:0.75rem; font-weight:600; color:var(--text); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px;">💬 Quick AI Prompts (Pediatric)</div>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+              <button class="btn btn-outline" style="font-size:0.7rem; padding:6px 10px; background:var(--surface);" onclick="sendGlobalChat('Does this child\\'s BMI category indicate a long-term risk of early-onset Type 2 Diabetes?')">BMI Risk Trajectory</button>
+              <button class="btn btn-outline" style="font-size:0.7rem; padding:6px 10px; background:var(--surface);" onclick="sendGlobalChat('What are the standard CDC immunization requirements for a child of this age?')">Immunization Schedule</button>
+              <button class="btn btn-outline" style="font-size:0.7rem; padding:6px 10px; background:var(--surface);" onclick="sendGlobalChat('What lifestyle interventions or nutritional guidelines are most effective for improving BMI in children?')">Nutritional Interventions</button>
+            </div>
+          </div>
         </div>
       `;
     }
