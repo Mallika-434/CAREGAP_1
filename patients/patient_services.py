@@ -192,8 +192,8 @@ def get_patient_prediction_payload(patient_id):
         "range_min": ensemble["range_min"],
         "range_max": ensemble["range_max"],
         "model_available": model_available,
-        "sugar_risk": decomposed["sugar"],
-        "bp_risk": decomposed["bp"],
+        "sugar_risk": decomposed["sugar_driven"],
+        "bp_risk": decomposed["bp_driven"],
         "sugar_forecast": {
             "lasso": hba1c_proj["lasso"],
             "rf": hba1c_proj["rf"],
