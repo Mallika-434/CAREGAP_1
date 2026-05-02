@@ -20,8 +20,17 @@
   <!-- SIDEBAR -->
   <nav class="sidebar">
     <div class="logo">
-      <div class="brand">CareGap<br>Analytics</div>
-      <div class="sub">Patient Risk Management</div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="14" y="2" width="8" height="32" rx="3" fill="#0d9488"/>
+          <rect x="2" y="14" width="32" height="8" rx="3" fill="#0d9488"/>
+          <polyline points="0,18 4,18 8,10 12,26 16,14 20,18 36,18" fill="none" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"/>
+        </svg>
+        <div>
+          <div class="brand" style="line-height:1.1;">CareGap</div>
+          <div class="sub">Patient Risk Management</div>
+        </div>
+      </div>
     </div>
     <div class="slabel">Reports (Dashboards)</div>
     <div class="nav-item active" id="nav-explorer" onclick="showSection('explorer', this)">
@@ -87,7 +96,14 @@
   <!-- MAIN -->
   <main class="main">
     <header class="topbar">
-      <div class="topbar-title">CareGap · <span>Patient Risk Engine</span></div>
+      <div class="topbar-title" style="display:flex; align-items:center; gap:8px;">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="14" y="2" width="8" height="32" rx="3" fill="#0d9488"/>
+          <rect x="2" y="14" width="32" height="8" rx="3" fill="#0d9488"/>
+          <polyline points="0,18 4,18 8,10 12,26 16,14 20,18 36,18" fill="none" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"/>
+        </svg>
+        CareGap · <span>Patient Risk Engine</span>
+      </div>
       <div style="display:flex;align-items:center;gap:12px">
         <div class="rag-status" id="ragStatus">
           <div class="rag-dot"></div>
