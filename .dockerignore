@@ -15,3 +15,9 @@ caregap.zip
 data.zip
 patients.zip
 rag.zip
+
+# Large data files — not needed; DB is seeded at build time
+db.sqlite3
+db_demo.sqlite3
+synthea_california.duckdb
+sqlite_to_duckdb.py
