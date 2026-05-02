@@ -515,38 +515,70 @@ def predict_ensemble_score(features_arr, feature_dict=None):
 
 def decompose_risk(feature_dict):
     """
-    Run the ensemble on 3 feature variants to decompose overall risk into
-    sugar-driven vs BP-driven components.
-
-    Returns
-    -------
-    {
-        'overall':  float,   # ensemble probability on real features
-        'sugar':    float,   # BP features zeroed out
-        'bp':       float,   # sugar features zeroed out
-    }
+    Computes risk contribution of BP vs Sugar drivers.
+    Returns contribution as percentage of total risk per ACC/AHA 2023 framing.
     """
-    # Neutral reference values
-    NORMAL_HBA1C = 5.4
-    NORMAL_SBP   = 118.0
+    import copy
 
     def _arr(d):
         return np.array([d[k] for k in FEATURE_NAMES], dtype=float)
 
-    overall_arr = _arr(feature_dict)
+    feature_arr = _arr(feature_dict)
+    base = predict_ensemble_score(feature_arr, feature_dict=feature_dict)
+    base_prob = base['probability']
 
-    sugar_only = dict(feature_dict)
-    sugar_only['latest_sbp']       = NORMAL_SBP
-    sugar_only['has_hypertension'] = 0
+    # Sugar-isolated: what does sugar alone contribute?
+    sugar_features = copy.deepcopy(feature_dict)
+    sugar_features['latest_sbp']       = 120.0
+    sugar_features['bp_trend']         = 0.0
+    sugar_features['has_hypertension'] = 0
+    sugar_res = predict_ensemble_score(_arr(sugar_features), feature_dict=sugar_features)
 
-    bp_only = dict(feature_dict)
-    bp_only['latest_hba1c'] = NORMAL_HBA1C
-    bp_only['has_diabetes'] = 0
+    # BP-isolated: what does BP alone contribute?
+    bp_features = copy.deepcopy(feature_dict)
+    bp_features['latest_hba1c'] = 5.5
+    bp_features['hba1c_trend']  = 0.0
+    bp_features['has_diabetes'] = 0
+    bp_res = predict_ensemble_score(_arr(bp_features), feature_dict=bp_features)
+
+    # Neutral baseline: neither condition active
+    neutral_features = copy.deepcopy(feature_dict)
+    neutral_features['latest_sbp']       = 120.0
+    neutral_features['bp_trend']         = 0.0
+    neutral_features['has_hypertension'] = 0
+    neutral_features['latest_hba1c']     = 5.5
+    neutral_features['hba1c_trend']      = 0.0
+    neutral_features['has_diabetes']     = 0
+    neutral_res = predict_ensemble_score(_arr(neutral_features), feature_dict=neutral_features)
+    neutral_prob = neutral_res['probability']
+
+    # Attributable risk = how much above neutral each factor drives
+    total_attributable  = max(base_prob - neutral_prob, 0.001)
+    sugar_attributable  = max(sugar_res['probability'] - neutral_prob, 0)
+    bp_attributable     = max(bp_res['probability']    - neutral_prob, 0)
+
+    sugar_contribution = round((sugar_attributable / total_attributable) * 100)
+    bp_contribution    = round((bp_attributable    / total_attributable) * 100)
+
+    # Normalize if both exceed 100 combined
+    if sugar_contribution + bp_contribution > 100:
+        denom = sugar_attributable + bp_attributable
+        sugar_contribution = round((sugar_attributable / denom) * 100)
+        bp_contribution    = 100 - sugar_contribution
 
     return {
-        'overall': predict_ensemble_score(overall_arr),
-        'sugar':   predict_ensemble_score(_arr(sugar_only)),
-        'bp':      predict_ensemble_score(_arr(bp_only)),
+        'overall': base,
+        'sugar_driven': {
+            **sugar_res,
+            'contribution_pct': sugar_contribution,
+            'label': f"Blood sugar drives {sugar_contribution}% of risk",
+        },
+        'bp_driven': {
+            **bp_res,
+            'contribution_pct': bp_contribution,
+            'label': f"Blood pressure drives {bp_contribution}% of risk",
+        },
+        'neutral_baseline': neutral_prob,
     }
 
 
