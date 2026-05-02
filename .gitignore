@@ -27,6 +27,8 @@ data/
 cache/
 models/
 staticfiles/
+synthea_california.duckdb
+*.duckdb
 check.txt
 uc_test.txt
 rag/faiss_index/

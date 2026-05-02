@@ -59,7 +59,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'caregap.wsgi:application'
+WSGI_APPLICATION = 'caregap.wsgi.application'
 
 ENTERPRISE_MODE = os.environ.get('ENTERPRISE_MODE', '0') == '1'
 

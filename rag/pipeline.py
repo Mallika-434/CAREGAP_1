@@ -24,6 +24,26 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+# ── Guardrails and prompt constants ───────────────────────────────────────────
+GUARDRAIL_PROMPT = (
+    "You are a clinical assistant for CareGap Analytics. "
+    "Provide accurate, evidence-based clinical information only. "
+    "Never provide diagnoses or replace professional medical judgment. "
+    "Be concise and focused on care coordination."
+)
+
+COORDINATOR_PROMPT = (
+    "You are assisting a care coordinator reviewing patient data. "
+    "Be concise, actionable, and focused on care coordination tasks. "
+    "Reference the patient data provided when answering."
+)
+
+OUT_OF_SCOPE_MESSAGE = (
+    "I can only answer questions related to clinical care coordination, "
+    "patient risk assessment, and population health management. "
+    "Please ask a question related to your patients or clinical guidelines."
+)
+
 # ── Try to import vector store deps (optional at import time) ──────
 try:
     import numpy as np
@@ -600,6 +620,146 @@ Write 3 bullets:
         elif explanation_type == 'bmi_assessment':
             return f"This child's BMI of {patient_data.get('bmi')} is classified as {patient_data.get('category')}. {patient_data.get('recommendation')}"
         return "No explanation available."
+
+    # ── Unified LLM caller ────────────────────────────────────────────────────
+
+    def _call_llm(self, prompt: str) -> str:
+        """Unified caller: MedGemma → Ollama → Gemini → raises RuntimeError."""
+        text = self._call_medgemma(prompt, max_tokens=400, temperature=0.2)
+        if text:
+            return text
+        text = self._call_ollama(prompt)
+        if text:
+            return text
+        text = self._call_gemini(prompt, max_output_tokens=400, temperature=0.3)
+        if text:
+            return text
+        raise RuntimeError("No LLM backend available")
+
+    def is_out_of_scope(self, question: str) -> bool:
+        """Return True if the question is clearly non-clinical."""
+        _oob = {'recipe', 'weather', 'sports', 'movie', 'music', 'politics',
+                'stock', 'crypto', 'bitcoin', 'game', 'joke', 'poem', 'song'}
+        return any(kw in question.lower() for kw in _oob)
+
+    def _mock_llm_response(self, question: str) -> str:
+        """Rule-based fallback when no LLM backend is reachable."""
+        q = question.lower()
+        if 'hba1c' in q:
+            return ("HbA1c measures average blood glucose over 2-3 months. "
+                    "Normal < 5.7%; prediabetes 5.7-6.4%; diabetes >= 6.5%.")
+        if any(k in q for k in ('blood pressure', 'sbp', 'hypertension')):
+            return ("SBP above 130 mmHg is elevated. Stage 1 HTN: 130-139 mmHg. "
+                    "Stage 2 HTN: 140+ mmHg. Hypertensive crisis: 180+ mmHg.")
+        if any(k in q for k in ('emergency', 'threshold', 'tier')):
+            return ("Emergency: HbA1c >= 9% OR SBP >= 160 mmHg — immediate outreach. "
+                    "High: HbA1c 8-8.9% OR SBP 140-159 — urgent care within 24-48 h. "
+                    "Moderate: active chronic dx, controlled labs — follow-up within 30 days.")
+        if any(k in q for k in ('risk', 'predict', 'score', 'ensemble')):
+            return ("Ensemble risk is a composite score from Lasso, Random Forest, and "
+                    "GradientBoosting models. Scores >= 60% indicate high risk of "
+                    "clinical deterioration in the next 6 months.")
+        return ("I can help with questions about patient risk scores, HbA1c, blood pressure, "
+                "care gaps, and population health metrics. Please try rephrasing your question.")
+
+    # ── Three methods required by rag/views.py ───────────────────────────────
+
+    def explain_prediction(self, patient_profile: dict, prediction_result: dict) -> str:
+        """Plain English explanation of any prediction result. Routes by cohort."""
+        is_pediatric = patient_profile.get('age', 99) < 18
+        cohort = prediction_result.get('cohort', '')
+
+        if is_pediatric or cohort == 'pediatric':
+            prompt = f"""{GUARDRAIL_PROMPT}
+Explain this pediatric BMI assessment to a non-technical health coordinator in plain English.
+
+PATIENT: {patient_profile.get('name')} ({patient_profile.get('age')}y {patient_profile.get('gender')})
+BMI: {prediction_result.get('bmi', 'N/A')}
+CDC PERCENTILE: {prediction_result.get('percentile', 'N/A')}th
+CATEGORY: {prediction_result.get('risk_tier') or prediction_result.get('category', 'N/A')}
+CARE GAPS: {', '.join(prediction_result.get('care_gaps', [])) or 'None detected'}
+RECOMMENDATION: {prediction_result.get('recommendation')}
+
+Keep it to 2-3 sentences. Focus on what the percentile means for this child and what the coordinator should do next."""
+        else:
+            prob = prediction_result.get('progression_probability') or prediction_result.get('onset_probability')
+            prob_str = f"{round(prob * 100)}%" if prob is not None else 'N/A'
+            prompt = f"""{GUARDRAIL_PROMPT}
+Explain this clinical prediction to a non-technical health coordinator in plain English.
+
+PATIENT: {patient_profile.get('name')} ({patient_profile.get('age')}y {patient_profile.get('gender')})
+ENSEMBLE RISK: {prob_str}
+MODEL SCORES: {prediction_result.get('model_scores', {})}
+RECOMMENDATION: {prediction_result.get('recommendation', 'N/A')}
+
+Keep it to 2-3 sentences. Focus on what the risk score means and what action the coordinator should take."""
+        try:
+            return self._call_llm(prompt)
+        except Exception:
+            prob = prediction_result.get('progression_probability') or prediction_result.get('onset_probability')
+            prob_str = f"{round(prob * 100)}%" if prob is not None else 'N/A'
+            return (
+                f"{patient_profile.get('name')} has an ensemble risk score of {prob_str}. "
+                f"Recommendation: {prediction_result.get('recommendation', 'Continue monitoring.')} "
+                f"Please review the patient's latest labs and follow up accordingly."
+            )
+
+    def generate_coordinator_answer(self, patient_profile: dict, question: str, history: list = None) -> str:
+        """Open-ended Q&A for care coordinators asking about a specific patient."""
+        if self.is_out_of_scope(question):
+            return OUT_OF_SCOPE_MESSAGE
+
+        history_text = ""
+        if history:
+            history_text = "\nPREVIOUS CONVERSATION:\n"
+            for msg in history[-6:]:
+                role = "User" if msg.get("isUser") else "Assistant"
+                history_text += f"{role}: {msg.get('text', '')}\n"
+
+        prompt = (
+            f"{GUARDRAIL_PROMPT}\n{COORDINATOR_PROMPT}\n"
+            f"PATIENT DATA: {patient_profile}\n"
+            f"{history_text}\n"
+            f"COORDINATOR QUESTION: {question}\n\n"
+            f"Provide a specific, clinical answer based on the patient context above."
+        )
+        try:
+            return self._call_llm(prompt)
+        except Exception:
+            return self._mock_llm_response(question)
+
+    def generate_analytics_answer(self, question: str, history: list = None) -> str:
+        """Answers questions about population analytics, tiers, and metrics."""
+        if self.is_out_of_scope(question):
+            return OUT_OF_SCOPE_MESSAGE
+
+        system_context = """
+CAREGAP ANALYTICS CONTEXT:
+- ENSEMBLE RISK: Composite prediction (0-100%) from Lasso, Random Forest, and XGBoost models.
+- EMERGENCY: HbA1c >= 9% or SBP >= 160 mmHg. Immediate outreach required.
+- HIGH: HbA1c 8-8.9% or SBP 140-159 mmHg. Urgent care routing within 24-48 hours.
+- MODERATE: Active Diabetes/HTN with controlled labs. Schedule follow-up within 30 days.
+- PREVENTIVE: Stable patients at future risk. Lifestyle reinforcement.
+- NORMAL: No high-risk labs or conditions. Routine monitoring.
+- THRESHOLDS: Diabetes (HbA1c >= 6.5%), Stage 2 HTN (SBP >= 140 mmHg).
+"""
+        history_text = ""
+        if history:
+            history_text = "\nPREVIOUS CONVERSATION:\n"
+            for msg in history[-6:]:
+                role = "User" if msg.get("isUser") else "Assistant"
+                history_text += f"{role}: {msg.get('text', '')}\n"
+
+        prompt = (
+            f"{GUARDRAIL_PROMPT}\n{system_context}\n"
+            f"{history_text}\n"
+            f"Analytics question: {question}\n\n"
+            f"Answer as a Clinical Data Analyst. Be specific about thresholds and tiers."
+        )
+        try:
+            return self._call_llm(prompt)
+        except Exception:
+            return self._mock_llm_response(question)
 
 
 def _build_prompt(profile: dict, context: str) -> str:
