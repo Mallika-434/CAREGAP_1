@@ -41,3 +41,6 @@ chronic_medications.csv
 
 # Ignore zip files
 *.zip
+
+# Large CSV export files — not needed in deployment
+*.csv
