@@ -29,7 +29,10 @@ def forecast_resources(risk_breakdown):
     icu_beds   = int(total_beds * 0.15)
     nurses     = math.ceil((total_beds - icu_beds) / 4) + icu_beds
 
+    high_risk_volume = emergency + high + moderate + elevated
+
     return {
+        'high_risk_volume': high_risk_volume,
         'risk_breakdown': risk_breakdown,
         'period_days': 30,
         'resources': {
