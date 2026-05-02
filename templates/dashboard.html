@@ -3013,7 +3013,7 @@
                     fetch('/api/rag/explain/', {
                       method: 'POST',
                       headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
-                      body: JSON.stringify({explanation_type: 'onset_risk', patient_data: patientData})
+                      body: JSON.stringify({patient_id: id, prediction_data: od.onset_risk})
                     })
                     .then(r => r.json())
                     .then(ed => {
@@ -3120,7 +3120,7 @@
                     fetch('/api/rag/explain/', {
                       method: 'POST',
                       headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
-                      body: JSON.stringify({explanation_type: 'bmi_assessment', patient_data: patientData})
+                      body: JSON.stringify({patient_id: id, prediction_data: bd})
                     })
                     .then(r => r.json())
                     .then(ed => {
@@ -3336,7 +3336,7 @@
             fetch('/api/rag/explain/', {
               method: 'POST',
               headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
-              body: JSON.stringify({explanation_type: 'chronic_prediction', patient_data: patientData})
+              body: JSON.stringify({patient_id: id, prediction_data: d})
             })
             .then(r => r.json())
             .then(ed => {
