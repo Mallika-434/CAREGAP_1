@@ -460,8 +460,7 @@
     function _renderDashboardLayout(data, chartsHtml) {
       const el = document.getElementById('dashboard-stats-content');
       if (!el) return;
-      el.innerHTML = (data ? _statCardsHtml(data) : '') + '<div class="panel" style="border-top:2px solid var(--blue);margin-bottom:18px"><div class="panel-h"><div><h3>Resource Forecast</h3><p>30-day demand projections.</p></div></div><div id="resource-forecast-content" style="padding:16px"><div class="empty"><div class="spin"></div><p>Loading...</p></div></div></div>' + (chartsHtml || '');
-      loadResourceForecast();
+      el.innerHTML = (data ? _statCardsHtml(data) : '') + (chartsHtml || '');
     }
     function _renderResourceForecastContent(data, error) {
       const container = document.getElementById('resource-forecast-content');
@@ -594,6 +593,7 @@
 
       if (appState.triageQueue) {
         _renderTriageData(appState.triageQueue);
+        loadResourceForecast();
         return;
       }
 
@@ -608,6 +608,7 @@
       } catch (e) {
         eBox.innerHTML = `<div class="empty"><p style="padding:10px 0;color:var(--red);">Failed to load triage queue: ${e.message}</p></div>`;
       }
+      loadResourceForecast();
     }
 
     function _formatRiskBadge(prob, available) {
