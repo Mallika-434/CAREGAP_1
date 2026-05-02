@@ -57,13 +57,21 @@ def _score_triage_patients(patient_rows):
             except Exception:
                 category = 'Unknown'
             sbp = row.get('sbp') or 0
-            prob = 0.80 if sbp >= 160 else 0.50 if sbp >= 140 else 0.20
+            if sbp >= 160:
+                prob = 0.85
+                label = f'{category} · BP Critical'
+            elif sbp >= 140:
+                prob = 0.50
+                label = f'{category} · BP Elevated'
+            else:
+                prob = 0.20
+                label = category
             row['probability']     = prob
             row['model_available'] = True
             row['risk_tier']       = 'pediatric'
-            row['risk_label']      = category
+            row['risk_label']      = label
             row['risk_drivers']    = (
-                f'Pediatric · {category}' +
+                f'Pediatric · {label}' +
                 (f' · SBP {int(sbp)} mmHg' if sbp >= 140 else '')
             )
             continue
