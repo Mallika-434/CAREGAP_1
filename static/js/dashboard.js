@@ -967,6 +967,7 @@
           const bRisk = d.bp_risk?.model_scores || {};
           const sugarContrib = d.sugar_risk?.contribution_pct ?? 0;
           const bpContrib    = d.bp_risk?.contribution_pct    ?? 0;
+          const otherContrib = Math.max(0, 100 - sugarContrib - bpContrib);
           const _pctColor = pct => pct >= 60 ? 'var(--red)' : pct >= 30 ? 'var(--amber)' : 'var(--green)';
           const sFor = d.sugar_forecast || {};
           const bFor = d.bp_forecast || {};
@@ -1134,6 +1135,11 @@
                     <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:6px;">BP Contribution</div>
                     <div style="font-size:1.8rem;font-weight:700;color:${_pctColor(bpContrib)}">${bpContrib}%</div>
                     <div style="font-size:.72rem;color:var(--text2);margin-top:4px;">${d.bp_risk?.label || ''}</div>
+                  </div>
+                  <div style="flex:1;padding:14px 16px;border-radius:8px;background:${_pctColor(otherContrib)}18;border:1px solid ${_pctColor(otherContrib)}44;">
+                    <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:6px;">Other Factors</div>
+                    <div style="font-size:1.8rem;font-weight:700;color:${_pctColor(otherContrib)}">${otherContrib}%</div>
+                    <div style="font-size:.72rem;color:var(--text2);margin-top:4px;">Age, visit history, care gaps</div>
                   </div>
                 </div>
               </div>
