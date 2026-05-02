@@ -536,23 +536,17 @@ def decompose_risk(feature_dict):
     overall_arr = _arr(feature_dict)
 
     sugar_only = dict(feature_dict)
-    sugar_only['latest_sbp']    = NORMAL_SBP
-    sugar_only['bp_trend']      = 0.0
+    sugar_only['latest_sbp']       = NORMAL_SBP
     sugar_only['has_hypertension'] = 0
 
     bp_only = dict(feature_dict)
-    bp_only['latest_hba1c']  = NORMAL_HBA1C
-    bp_only['hba1c_trend']   = 0.0
-    bp_only['has_diabetes']  = 0
-
-    overall_score = predict_ensemble_score(overall_arr)['probability']
-    sugar_score   = predict_ensemble_score(_arr(sugar_only))['probability']
-    bp_score      = predict_ensemble_score(_arr(bp_only))['probability']
+    bp_only['latest_hba1c'] = NORMAL_HBA1C
+    bp_only['has_diabetes'] = 0
 
     return {
-        'overall': overall_score,
-        'sugar':   sugar_score,
-        'bp':      bp_score,
+        'overall': predict_ensemble_score(overall_arr),
+        'sugar':   predict_ensemble_score(_arr(sugar_only)),
+        'bp':      predict_ensemble_score(_arr(bp_only)),
     }
 
 
