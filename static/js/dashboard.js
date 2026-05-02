@@ -1074,7 +1074,7 @@
                       </div>
                       <div>
                          <div style="font-size:.7rem;color:var(--text3);text-transform:uppercase;font-weight:600;letter-spacing:1px;margin-bottom:4px;">XGB Baseline</div>
-                         <div style="font-size:1.4rem;font-weight:700;color:${(cScores.XGBoost||0) > 0.5 ? 'var(--red)' : 'var(--text)'};">${Math.round((cScores.XGBoost||0)*100)}%</div>
+                         <div style="font-size:1.4rem;font-weight:700;color:${(cScores.GradientBoosting||0) > 0.5 ? 'var(--red)' : 'var(--text)'};">${Math.round((cScores.GradientBoosting||0)*100)}%</div>
                       </div>
                    </div>
                 </div>
@@ -1084,47 +1084,59 @@
 
             <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:20px;margin-top:16px;overflow-x:auto;">
               <div style="font-size:.9rem;font-weight:700;color:var(--text);text-transform:uppercase;margin-bottom:16px;letter-spacing:0.1em;display:flex;align-items:center;gap:8px;">
-                <span style="font-size:1.2rem;">🧠</span> Model Impact Matrix & Simulations
+                <span style="font-size:1.2rem;">🧠</span> Model Impact Matrix
               </div>
 
               <table style="width:100%; border-collapse: collapse; font-size: 0.8rem; text-align:left; white-space: nowrap;">
                 <thead>
                   <tr style="border-bottom: 2px solid var(--border2); color:var(--text3); text-transform:uppercase; font-size:0.7rem; letter-spacing:0.05em;">
-                    <th style="padding:10px 12px; width:15%; vertical-align:top;">Architecture</th>
-                    <th style="padding:10px 12px; width:35%; white-space: normal; vertical-align:top;">Methodology & Behavior</th>
-                    <th style="padding:10px 12px; width:12.5%; color:var(--red); vertical-align:top;">Sugar Risk Contribution<br><span style="font-size:.65rem;color:var(--text3);text-transform:none;font-weight:400;display:block;margin-top:4px;white-space:normal;">Share of total risk driven by blood sugar (ACC/AHA 2023)</span></th>
-                    <th style="padding:10px 12px; width:12.5%; color:var(--blue); vertical-align:top;">BP Risk Contribution<br><span style="font-size:.65rem;color:var(--text3);text-transform:none;font-weight:400;display:block;margin-top:4px;white-space:normal;">Share of total risk driven by blood pressure (ACC/AHA 2023)</span></th>
-                    <th style="padding:10px 12px; width:12.5%; vertical-align:top;">Predicted Blood Pressure<br><span style="font-size:.65rem;color:var(--text3);text-transform:none;font-weight:400;display:block;margin-top:4px;white-space:normal;">Estimated timeline in 6 months based on clinical history.</span></th>
-                    <th style="padding:10px 12px; width:12.5%; vertical-align:top;">Predicted Blood Sugar<br><span style="font-size:.65rem;color:var(--text3);text-transform:none;font-weight:400;display:block;margin-top:4px;white-space:normal;">Estimated timeline in 6 months based on clinical history.</span></th>
+                    <th style="padding:10px 12px; width:18%; vertical-align:top;">Architecture</th>
+                    <th style="padding:10px 12px; width:38%; white-space: normal; vertical-align:top;">Methodology & Behavior</th>
+                    <th style="padding:10px 12px; width:15%; vertical-align:top;">Individual Score<br><span style="font-size:.65rem;color:var(--text3);text-transform:none;font-weight:400;display:block;margin-top:4px;white-space:normal;">6-month progression risk from this model alone.</span></th>
+                    <th style="padding:10px 12px; width:15%; vertical-align:top;">Predicted Blood Pressure<br><span style="font-size:.65rem;color:var(--text3);text-transform:none;font-weight:400;display:block;margin-top:4px;white-space:normal;">Estimated SBP in 6 months.</span></th>
+                    <th style="padding:10px 12px; width:14%; vertical-align:top;">Predicted Blood Sugar<br><span style="font-size:.65rem;color:var(--text3);text-transform:none;font-weight:400;display:block;margin-top:4px;white-space:normal;">Estimated HbA1c in 6 months.</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr style="border-bottom: 1px solid var(--border2); background:var(--surface);">
                     <td style="padding:14px 12px; font-weight:700; color:var(--blue);">Lasso Regression</td>
                     <td style="padding:14px 12px; color:var(--text2); font-size:0.75rem; white-space: normal;">Linear risks. Capable of saturating at 100% on high-risk baselines.</td>
-                    <td style="padding:14px 12px; font-size:1.1rem; font-weight:700; color:${_pctColor(sugarContrib)}">${sugarContrib}%</td>
-                    <td style="padding:14px 12px; font-size:1.1rem; font-weight:700; color:${_pctColor(bpContrib)}">${bpContrib}%</td>
-                    <td style="padding:14px 12px; font-weight:600; font-size:.9rem;">${Math.round(bFor.lasso || 0)} mmHg</td>
+                    <td style="padding:14px 12px; font-size:1.1rem; font-weight:700; color:${(cScores.Lasso||0) >= 0.6 ? 'var(--red)' : (cScores.Lasso||0) >= 0.4 ? 'var(--amber)' : 'var(--green)'}">${Math.round((cScores.Lasso||0)*100)}%</td>
+                    <td style="padding:14px 12px; font-weight:600; font-size:.9rem;">${Math.round(bFor.lasso || 0) || '—'} mmHg</td>
                     <td style="padding:14px 12px; font-weight:600; font-size:.9rem;">${sFor.lasso || '—'}%</td>
                   </tr>
                   <tr style="border-bottom: 1px solid var(--border2); background:var(--bg3);">
                     <td style="padding:14px 12px; font-weight:700; color:var(--green);">Random Forest</td>
                     <td style="padding:14px 12px; color:var(--text2); font-size:0.75rem; white-space: normal;">Tree ensemble. Evaluates conservative, non-linear pathway averages.</td>
-                    <td style="padding:14px 12px; font-size:1.1rem; font-weight:700; color:${_pctColor(sugarContrib)}">${sugarContrib}%</td>
-                    <td style="padding:14px 12px; font-size:1.1rem; font-weight:700; color:${_pctColor(bpContrib)}">${bpContrib}%</td>
-                    <td style="padding:14px 12px; font-weight:600; font-size:.9rem;">${Math.round(bFor.rf || 0)} mmHg</td>
+                    <td style="padding:14px 12px; font-size:1.1rem; font-weight:700; color:${(cScores['Random Forest']||0) >= 0.6 ? 'var(--red)' : (cScores['Random Forest']||0) >= 0.4 ? 'var(--amber)' : 'var(--green)'}">${Math.round((cScores['Random Forest']||0)*100)}%</td>
+                    <td style="padding:14px 12px; font-weight:600; font-size:.9rem;">${Math.round(bFor.rf || 0) || '—'} mmHg</td>
                     <td style="padding:14px 12px; font-weight:600; font-size:.9rem;">${sFor.rf || '—'}%</td>
                   </tr>
                   <tr style="background:var(--surface);">
                     <td style="padding:14px 12px; font-weight:700; color:var(--red);">XGBoost</td>
                     <td style="padding:14px 12px; color:var(--text2); font-size:0.75rem; white-space: normal;">Aggressive logic interactions. Identifies critical gatekeeper vitals instantly.</td>
-                    <td style="padding:14px 12px; font-size:1.1rem; font-weight:700; color:${_pctColor(sugarContrib)}">${sugarContrib}%</td>
-                    <td style="padding:14px 12px; font-size:1.1rem; font-weight:700; color:${_pctColor(bpContrib)}">${bpContrib}%</td>
-                    <td style="padding:14px 12px; font-weight:600; font-size:.9rem;">${Math.round(bFor.xgb || 0)} mmHg</td>
+                    <td style="padding:14px 12px; font-size:1.1rem; font-weight:700; color:${(cScores.GradientBoosting||0) >= 0.6 ? 'var(--red)' : (cScores.GradientBoosting||0) >= 0.4 ? 'var(--amber)' : 'var(--green)'}">${Math.round((cScores.GradientBoosting||0)*100)}%</td>
+                    <td style="padding:14px 12px; font-weight:600; font-size:.9rem;">${Math.round(bFor.xgb || 0) || '—'} mmHg</td>
                     <td style="padding:14px 12px; font-weight:600; font-size:.9rem;">${sFor.xgb || '—'}%</td>
                   </tr>
                 </tbody>
               </table>
+
+              <div style="margin-top:16px;">
+                <div style="font-size:.7rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Risk Attribution (Ensemble Level · ACC/AHA 2023)</div>
+                <div style="display:flex; gap:12px;">
+                  <div style="flex:1;padding:14px 16px;border-radius:8px;background:${_pctColor(sugarContrib)}18;border:1px solid ${_pctColor(sugarContrib)}44;">
+                    <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:6px;">Sugar Contribution</div>
+                    <div style="font-size:1.8rem;font-weight:700;color:${_pctColor(sugarContrib)}">${sugarContrib}%</div>
+                    <div style="font-size:.72rem;color:var(--text2);margin-top:4px;">${d.sugar_risk?.label || ''}</div>
+                  </div>
+                  <div style="flex:1;padding:14px 16px;border-radius:8px;background:${_pctColor(bpContrib)}18;border:1px solid ${_pctColor(bpContrib)}44;">
+                    <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:6px;">BP Contribution</div>
+                    <div style="font-size:1.8rem;font-weight:700;color:${_pctColor(bpContrib)}">${bpContrib}%</div>
+                    <div style="font-size:.72rem;color:var(--text2);margin-top:4px;">${d.bp_risk?.label || ''}</div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div style="margin-top:16px;padding:12px;background:${color}15;border-radius:8px;color:${color};font-size:.85rem;font-weight:500;border:1px solid ${color}33">
