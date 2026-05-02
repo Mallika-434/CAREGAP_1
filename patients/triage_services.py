@@ -15,6 +15,57 @@ def _age(birthdate):
     return today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
 
 
+def _score_triage_patients(patient_rows):
+    """Add probability, model_available, and risk_drivers to each triage patient dict."""
+    if not patient_rows:
+        return
+    from .ml_models import extract_features, predict_ensemble_score
+    from .risk_engine import assess_risk
+
+    pids = [p['patient_id'] for p in patient_rows]
+    patient_objs = {
+        p.patient_id: p for p in
+        Patient.objects.filter(patient_id__in=pids).prefetch_related(
+            'observations', 'conditions', 'medications', 'encounters'
+        )
+    }
+
+    for row in patient_rows:
+        pid = row['patient_id']
+        hba1c = row.get('hba1c')
+        sbp   = row.get('sbp')
+        drivers = []
+        if hba1c and hba1c >= 9.0:
+            drivers.append(f'HbA1c {hba1c}%')
+        if sbp and sbp >= 160:
+            drivers.append(f'SBP {int(sbp)} mmHg')
+        row['risk_drivers'] = ' · '.join(drivers) if drivers else 'Elevated Risk'
+
+        patient = patient_objs.get(pid)
+        if not patient or patient.cohort not in ('chronic', 'at_risk'):
+            row['probability'] = None
+            row['model_available'] = False
+            continue
+        try:
+            observations = list(patient.observations.all())
+            conditions   = list(patient.conditions.all())
+            medications  = list(patient.medications.all())
+            encounters   = list(patient.encounters.all())
+            features_dict, features_arr = extract_features(
+                patient, observations, conditions, medications, encounters
+            )
+            ensemble = predict_ensemble_score(features_arr, features_dict)
+            prob = ensemble['probability']
+            if not ensemble['model_available']:
+                result = assess_risk(patient, observations, conditions)
+                prob = min(result.score / 100.0, 0.99)
+            row['probability']     = round(prob, 3)
+            row['model_available'] = ensemble['model_available']
+        except Exception:
+            row['probability'] = None
+            row['model_available'] = False
+
+
 def get_triage_payload():
     cached = cache.get("triage_list")
     if cached is not None:
@@ -183,9 +234,21 @@ def get_triage_payload():
             row.pop("_last_enc", None)
         return result[:limit]
 
+    emergency_patients = _fetch_patients(critical_pids, "CRITICAL", limit=10)
+    urgent_patients    = _fetch_urgent(urgent_pids, limit=50)
+
+    _score_triage_patients(emergency_patients)
+    _score_triage_patients(urgent_patients)
+
     payload = {
-        "emergency_patients": _fetch_patients(critical_pids, "CRITICAL", limit=10),
-        "urgent_patients": _fetch_urgent(urgent_pids, limit=50),
+        "emergency_patients": emergency_patients,
+        "urgent_patients":    urgent_patients,
+        "risk_breakdown": {
+            "emergency": len(emergency_patients),
+            "high":      len(urgent_patients),
+            "moderate":  0,
+            "elevated":  0,
+        },
     }
     cache.set("triage_list", payload, 300)
     return payload
