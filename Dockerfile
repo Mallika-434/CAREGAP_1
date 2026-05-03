@@ -52,12 +52,10 @@ EXPOSE 7860
 #   migrate  — no-op on normal restarts; picks up any new migrations on redeploy
 #   setup_demo — trains ML models on seeded data + warms dashboard cache
 #   gunicorn — serves the app
-CMD python manage.py migrate --no-input && \
-    if [ ! -f db_demo.sqlite3 ] || [ $(python -c "import sqlite3; conn=sqlite3.connect('db_demo.sqlite3'); c=conn.execute('SELECT COUNT(*) FROM patients_patient'); print(c.fetchone()[0])") -lt 100 ]; then \
-        python manage.py setup_demo; \
-    else \
-        python manage.py train_models && python manage.py warm_cache; \
-    fi && \
+CMD python download_db.py && \
+    python manage.py migrate --no-input && \
+    python manage.py train_models && \
+    python manage.py warm_cache && \
     python manage.py build_rag_index || true && \
     python manage.py precompute_forecast || true && \
     exec gunicorn caregap.wsgi:application \
