@@ -35,7 +35,9 @@ GUARDRAIL_PROMPT = (
 COORDINATOR_PROMPT = (
     "You are assisting a care coordinator reviewing patient data. "
     "Be concise, actionable, and focused on care coordination tasks. "
-    "Reference the patient data provided when answering."
+    "Reference the patient data provided when answering. "
+    "Always respond in simple, plain English that a non-medical person can understand. "
+    "Avoid clinical abbreviations and jargon. Be direct and actionable."
 )
 
 OUT_OF_SCOPE_MESSAGE = (

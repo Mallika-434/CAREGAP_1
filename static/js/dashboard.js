@@ -1367,7 +1367,7 @@
           const bmi = predictionData.bmi != null ? predictionData.bmi.toFixed(1) : '—';
           const category = predictionData.category || '—';
           const rec = predictionData.recommend || predictionData.recommendation || '—';
-          question = `Pediatric patient, age ${age}, gender ${gender}. CDC BMI assessment: BMI ${bmi} (${category} category). Care recommendation: ${rec}. In 2–3 sentences, explain what this BMI result means clinically and what action the care coordinator should take.`;
+          question = `Pediatric patient, age ${age}, gender ${gender}. CDC BMI assessment: BMI ${bmi} (${category} category). Care recommendation: ${rec}. Use simple, non-technical language. Avoid medical jargon. Write as if explaining to a nurse care coordinator who is not a doctor. Keep it to 2-3 sentences.`;
         } else if (isAtRisk) {
           const onset = predictionData.onset_risk || {};
           const htn = onset.htn || {};
@@ -1376,7 +1376,7 @@
           const t2dProb = Math.round(t2d.ensemble || 0);
           const age = predictionData.age || '—';
           const gender = predictionData.gender || '—';
-          question = `At-risk patient, age ${age}, gender ${gender}. Onset risk predictions — HTN: ${htnProb}% (ensemble), T2D: ${t2dProb}% (ensemble). In 2–3 sentences, explain what these onset risk scores mean and what preventive actions the care coordinator should prioritize.`;
+          question = `At-risk patient, age ${age}, gender ${gender}. Onset risk predictions — HTN: ${htnProb}% (ensemble), T2D: ${t2dProb}% (ensemble). Use simple, non-technical language. Avoid medical jargon. Write as if explaining to a nurse care coordinator who is not a doctor. Keep it to 3-4 sentences.`;
         } else {
           const prob = predictionData.progression_probability != null ? Math.round(predictionData.progression_probability * 100) : '—';
           const scores = predictionData.model_scores || {};
@@ -1386,7 +1386,7 @@
           const age = predictionData.age || '—';
           const gender = predictionData.gender || '—';
           const tier = predictionData.risk_tier || predictionData.tier || '—';
-          question = `Chronic disease patient, age ${age}, gender ${gender}, risk tier ${tier}. Ensemble progression probability: ${prob}%. Individual model scores — Lasso: ${lasso}%, Random Forest: ${rf}%, XGBoost: ${xgb}%. In 2–3 sentences, explain what these risk scores mean and what care actions the coordinator should take.`;
+          question = `Chronic disease patient, age ${age}, gender ${gender}, risk tier ${tier}. Ensemble progression probability: ${prob}%. Individual model scores — Lasso: ${lasso}%, Random Forest: ${rf}%, XGBoost: ${xgb}%. Use simple, non-technical language. Avoid medical jargon. Write as if explaining to a nurse care coordinator who is not a doctor. Keep it to 3-4 sentences.`;
         }
 
         const res = await fetch('/api/rag/ask/', {
