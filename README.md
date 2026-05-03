@@ -12,7 +12,7 @@ pinned: false
 ### Population Health Management Dashboard
 **Course:** AA-5960-02 · Group 5 · Saint Louis University  
 **Instructor:** Dr. Srikanth Mudigonda  
-**Team:** Mallika · Asmi Basnet · Mandapalli Jagadeeshwari
+**Team:** Asmi Basnet · Mallika Chand · Mandapalli Jagadeeshwari
 
 ---
 
