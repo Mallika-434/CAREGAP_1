@@ -1342,42 +1342,67 @@
 
     async function explainPrediction(pid, predictionData) {
       const btn = event.currentTarget;
+      const btnWrapper = btn.parentNode;
       const originalText = btn.innerHTML;
       btn.disabled = true;
       btn.innerHTML = '<div class="spin" style="width:12px; height:12px;"></div> Explaining...';
 
+      let resultBox = btnWrapper.querySelector('.explain-result-box');
+      if (!resultBox) {
+        resultBox = document.createElement('div');
+        resultBox.className = 'explain-result-box';
+        resultBox.style.cssText = 'margin-top:10px;padding:12px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--purple);font-size:0.82rem;color:var(--text2);line-height:1.6;';
+        btnWrapper.appendChild(resultBox);
+      }
+      resultBox.innerHTML = '<div style="display:flex;align-items:center;gap:8px;"><div class="spin" style="width:12px;height:12px;border-width:2px;border-color:var(--purple) transparent var(--purple) transparent;"></div><span style="font-style:italic;color:var(--text3);">AI generating explanation...</span></div>';
+
       try {
         const isPediatric = predictionData.bmi != null && predictionData.category != null;
-        let explainText;
+        const isAtRisk = !isPediatric && predictionData.onset_risk != null;
+        let question;
 
         if (isPediatric) {
-          const age = predictionData.age || '';
+          const age = predictionData.age || '—';
+          const gender = predictionData.gender || '—';
           const bmi = predictionData.bmi != null ? predictionData.bmi.toFixed(1) : '—';
           const category = predictionData.category || '—';
-          const question = `This is a pediatric patient aged ${age}. Their CDC BMI assessment shows BMI ${bmi} in the ${category} category. Explain what this means for a care coordinator in 2 sentences and what action to take.`;
-          const res = await fetch('/api/rag/ask/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-            body: JSON.stringify({ patient_id: pid, question })
-          });
-          const data = await res.json();
-          explainText = `AI Explanation for ${predictionData.name || predictionData.patient_name || 'Patient'}:\n\n${data.answer || 'No explanation available.'}`;
+          const rec = predictionData.recommend || predictionData.recommendation || '—';
+          question = `Pediatric patient, age ${age}, gender ${gender}. CDC BMI assessment: BMI ${bmi} (${category} category). Care recommendation: ${rec}. In 2–3 sentences, explain what this BMI result means clinically and what action the care coordinator should take.`;
+        } else if (isAtRisk) {
+          const onset = predictionData.onset_risk || {};
+          const htn = onset.htn || {};
+          const t2d = onset.t2d || {};
+          const htnProb = Math.round((htn.ensemble_probability || 0) * 100);
+          const t2dProb = Math.round((t2d.ensemble_probability || 0) * 100);
+          const age = predictionData.age || '—';
+          const gender = predictionData.gender || '—';
+          question = `At-risk patient, age ${age}, gender ${gender}. Onset risk predictions — HTN: ${htnProb}% (ensemble), T2D: ${t2dProb}% (ensemble). In 2–3 sentences, explain what these onset risk scores mean and what preventive actions the care coordinator should prioritize.`;
         } else {
-          const res = await fetch('/api/rag/explain/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-            body: JSON.stringify({ patient_id: pid, prediction_data: predictionData })
-          });
-          const data = await res.json();
-          explainText = `AI Explanation for ${data.patient_name || 'Patient'}:\n\n${data.explanation}`;
+          const prob = predictionData.progression_probability != null ? Math.round(predictionData.progression_probability * 100) : '—';
+          const scores = predictionData.model_scores || {};
+          const lasso = scores.lasso != null ? Math.round(scores.lasso * 100) : '—';
+          const rf = scores.random_forest != null ? Math.round(scores.random_forest * 100) : '—';
+          const xgb = scores.xgboost != null ? Math.round(scores.xgboost * 100) : '—';
+          const age = predictionData.age || '—';
+          const gender = predictionData.gender || '—';
+          const tier = predictionData.risk_tier || predictionData.tier || '—';
+          question = `Chronic disease patient, age ${age}, gender ${gender}, risk tier ${tier}. Ensemble progression probability: ${prob}%. Individual model scores — Lasso: ${lasso}%, Random Forest: ${rf}%, XGBoost: ${xgb}%. In 2–3 sentences, explain what these risk scores mean and what care actions the coordinator should take.`;
         }
 
-        openGlobalChat();
-        addGlobalChatMessage('ai', `<strong>${explainText.replace(/\n/g, '<br>')}</strong>`);
-        globalChatHistory.push({ isUser: true, text: "Can you explain this patient's prediction result?" });
-        globalChatHistory.push({ isUser: false, text: explainText });
+        const res = await fetch('/api/rag/ask/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+          body: JSON.stringify({ patient_id: pid, question })
+        });
+        const data = await res.json();
+        const answer = data.answer || 'No explanation available.';
+
+        resultBox.innerHTML = `<div style="font-size:0.72rem;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">AI Explanation</div><div>${answer.replace(/\n/g, '<br>')}</div>`;
+
+        globalChatHistory.push({ isUser: true, text: question });
+        globalChatHistory.push({ isUser: false, text: answer });
       } catch (e) {
-        addGlobalChatMessage('ai', `Sorry, I encountered an error while generating the explanation: ${e.message}`);
+        resultBox.innerHTML = `<span style="color:var(--red);font-size:.82rem;">Error: ${e.message}</span>`;
       } finally {
         btn.disabled = false;
         btn.innerHTML = originalText;
