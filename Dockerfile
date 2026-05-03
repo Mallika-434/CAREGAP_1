@@ -54,7 +54,7 @@ EXPOSE 7860
 #   gunicorn — serves the app
 CMD python download_db.py && \
     python manage.py migrate --no-input && \
-    python manage.py train_models && \
+    python -c "import os; exit(0 if os.path.exists('models/htn_lasso.pkl') else 1)" || python manage.py train_models && \
     python manage.py warm_cache && \
     python manage.py build_rag_index || true && \
     python manage.py precompute_forecast || true && \
