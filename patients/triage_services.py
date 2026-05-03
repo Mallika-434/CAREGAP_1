@@ -162,7 +162,7 @@ def get_triage_payload():
         if hba1c >= 9.0:
             last_enc = encounter_map.get(pid)
             if last_enc is None or (
-                hasattr(last_enc, "date") and last_enc < thirty_ago.date()
+                hasattr(last_enc, "date") and callable(last_enc.date) and last_enc.date() < thirty_ago.date()
             ) or (
                 hasattr(last_enc, "year")
                 and not hasattr(last_enc, "date")
