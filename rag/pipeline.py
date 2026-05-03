@@ -640,7 +640,12 @@ Write 3 bullets:
         """Return True if the question is clearly non-clinical."""
         _oob = {'recipe', 'weather', 'sports', 'movie', 'music', 'politics',
                 'stock', 'crypto', 'bitcoin', 'game', 'joke', 'poem', 'song'}
-        return any(kw in question.lower() for kw in _oob)
+        _clinical = {'bmi', 'pediatric', 'weight', 'growth chart', 'healthy weight',
+                     'overweight', 'obese', 'underweight'}
+        q = question.lower()
+        if any(kw in q for kw in _clinical):
+            return False
+        return any(kw in q for kw in _oob)
 
     def _mock_llm_response(self, question: str) -> str:
         """Rule-based fallback when no LLM backend is reachable."""
@@ -659,6 +664,11 @@ Write 3 bullets:
             return ("Ensemble risk is a composite score from Lasso, Random Forest, and "
                     "GradientBoosting models. Scores >= 60% indicate high risk of "
                     "clinical deterioration in the next 6 months.")
+        if any(k in q for k in ('bmi', 'pediatric', 'weight', 'growth chart', 'overweight', 'obese', 'underweight')):
+            return ("A child's BMI is assessed using CDC age- and gender-adjusted growth charts. "
+                    "Categories: Underweight (<5th percentile), Healthy (5th–84th), "
+                    "Overweight (85th–94th), Obese (≥95th percentile). "
+                    "Follow up with the care team for nutritional counseling or referral as appropriate.")
         return ("I can help with questions about patient risk scores, HbA1c, blood pressure, "
                 "care gaps, and population health metrics. Please try rephrasing your question.")
 
