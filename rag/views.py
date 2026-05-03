@@ -60,11 +60,13 @@ def rag_status(request):
         pass
     index_path = settings.FAISS_INDEX_PATH
     index_built = ((index_path / 'knowledge.index').exists() and (index_path / 'chunks.json').exists())
+    gemini_configured = bool(getattr(settings, 'GEMINI_API_KEY', None))
     return Response({
         'ollama_reachable': ollama_ok, 'ollama_url': settings.OLLAMA_BASE_URL,
         'configured_model': settings.OLLAMA_MODEL, 'available_models': ollama_models,
         'faiss_index_built': index_built,
-        'status': 'ready' if (ollama_ok and index_built) else 'not_ready'
+        'gemini_configured': gemini_configured,
+        'status': 'ready' if (ollama_ok and index_built) or (index_built and gemini_configured) else 'not_ready'
     })
 
 

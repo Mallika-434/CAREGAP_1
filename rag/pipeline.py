@@ -318,7 +318,7 @@ class RAGPipeline:
 
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"gemini-2.0-flash-lite:generateContent?key={gemini_key}"
+            f"gemini-2.5-flash:generateContent?key={gemini_key}"
         )
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],

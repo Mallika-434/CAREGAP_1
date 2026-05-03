@@ -1282,12 +1282,22 @@
       try {
         const res = await fetch('/api/rag/status/');
         const data = await res.json();
-        if (data.status === 'ready') {
-          document.getElementById('ragStatus').classList.add('ok');
-          text.textContent = `AI: ${data.configured_model} Ready`;
+        const faiss = data.faiss_index_built;
+        const ollama = data.ollama_reachable;
+        const gemini = data.gemini_configured;
+        const el = document.getElementById('ragStatus');
+        if (ollama && faiss) {
+          el.classList.add('ok'); el.classList.remove('warn');
+          text.textContent = 'AI: phi3 Ready';
+        } else if (!ollama && faiss && gemini) {
+          el.classList.add('ok'); el.classList.remove('warn');
+          text.textContent = 'AI: Gemini Ready';
+        } else if (faiss) {
+          el.classList.remove('ok'); el.classList.add('warn');
+          text.textContent = 'AI: Basic Mode';
         } else {
-          document.getElementById('ragStatus').classList.remove('ok');
-          text.textContent = `AI: Not Ready (FAISS/Ollama)`;
+          el.classList.remove('ok'); el.classList.remove('warn');
+          text.textContent = 'AI: Not Ready';
         }
       } catch (e) {
         text.textContent = `AI: Offline`;
