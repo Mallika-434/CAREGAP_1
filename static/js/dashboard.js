@@ -1347,19 +1347,33 @@
       btn.innerHTML = '<div class="spin" style="width:12px; height:12px;"></div> Explaining...';
 
       try {
-        const res = await fetch('/api/rag/explain/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-          body: JSON.stringify({ patient_id: pid, prediction_data: predictionData })
-        });
-        const data = await res.json();
+        const isPediatric = predictionData.bmi != null && predictionData.category != null;
+        let explainText;
 
-        // Open the global chat and inject the explanation
+        if (isPediatric) {
+          const age = predictionData.age || '';
+          const bmi = predictionData.bmi != null ? predictionData.bmi.toFixed(1) : '—';
+          const category = predictionData.category || '—';
+          const question = `This is a pediatric patient aged ${age}. Their CDC BMI assessment shows BMI ${bmi} in the ${category} category. Explain what this means for a care coordinator in 2 sentences and what action to take.`;
+          const res = await fetch('/api/rag/ask/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+            body: JSON.stringify({ patient_id: pid, question })
+          });
+          const data = await res.json();
+          explainText = `AI Explanation for ${predictionData.name || predictionData.patient_name || 'Patient'}:\n\n${data.answer || 'No explanation available.'}`;
+        } else {
+          const res = await fetch('/api/rag/explain/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+            body: JSON.stringify({ patient_id: pid, prediction_data: predictionData })
+          });
+          const data = await res.json();
+          explainText = `AI Explanation for ${data.patient_name || 'Patient'}:\n\n${data.explanation}`;
+        }
+
         openGlobalChat();
-        const explainText = `AI Explanation for ${data.patient_name || 'Patient'}:\n\n${data.explanation}`;
         addGlobalChatMessage('ai', `<strong>${explainText.replace(/\n/g, '<br>')}</strong>`);
-        
-        // Push both the implied user request and AI response to conversational memory!
         globalChatHistory.push({ isUser: true, text: "Can you explain this patient's prediction result?" });
         globalChatHistory.push({ isUser: false, text: explainText });
       } catch (e) {
