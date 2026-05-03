@@ -6,6 +6,7 @@ charset-normalizer==3.4.6
 click==8.3.1
 colorama==0.4.6
 Django==5.2.1
+duckdb==1.2.2
 django-cors-headers==4.9.0
 djangorestframework==3.16.0
 faiss-cpu==1.13.2
@@ -46,7 +47,8 @@ sqlparse==0.5.5
 sympy==1.14.0
 threadpoolctl==3.6.0
 tokenizers==0.22.2
-torch==2.11.0
+# torch is installed separately in Dockerfile with CPU-only flag
+# torch==2.6.0
 tqdm==4.67.3
 transformers==5.3.0
 typer==0.24.1
