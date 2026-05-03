@@ -1372,8 +1372,8 @@
           const onset = predictionData.onset_risk || {};
           const htn = onset.htn || {};
           const t2d = onset.t2d || {};
-          const htnProb = Math.round((htn.ensemble_probability || 0) * 100);
-          const t2dProb = Math.round((t2d.ensemble_probability || 0) * 100);
+          const htnProb = Math.round(htn.ensemble || 0);
+          const t2dProb = Math.round(t2d.ensemble || 0);
           const age = predictionData.age || '—';
           const gender = predictionData.gender || '—';
           question = `At-risk patient, age ${age}, gender ${gender}. Onset risk predictions — HTN: ${htnProb}% (ensemble), T2D: ${t2dProb}% (ensemble). In 2–3 sentences, explain what these onset risk scores mean and what preventive actions the care coordinator should prioritize.`;

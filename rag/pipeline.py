@@ -297,7 +297,7 @@ class RAGPipeline:
             'prompt': prompt,
             'stream': False,
         }
-        payload['options'] = {'temperature': 0, 'top_p': 0.9}
+        payload['options'] = {'temperature': 0, 'top_p': 0.9, 'num_predict': 1024}
         if system:
             payload['system'] = system
 
@@ -458,7 +458,7 @@ class RAGPipeline:
 
         # Cloud fallback: Gemini only when explicitly configured
         try:
-            text = self._call_gemini(prompt, max_output_tokens=400, temperature=0.3)
+            text = self._call_gemini(prompt, max_output_tokens=1024, temperature=0.3)
             if text:
                 return {
                     'query': query,
@@ -595,7 +595,7 @@ Write 3 bullets:
 
         # Cloud fallback: Gemini only when configured
         try:
-            text = self._call_gemini(prompt, max_output_tokens=300, temperature=0.4)
+            text = self._call_gemini(prompt, max_output_tokens=1024, temperature=0.4)
             if text:
                 return {"explanation": text, "source": "gemini"}
         except Exception as e:
@@ -638,7 +638,7 @@ Write 3 bullets:
         except Exception as e:
             logger.warning("Ollama _call_llm failed: %s", e)
         try:
-            text = self._call_gemini(prompt, max_output_tokens=400, temperature=0.3)
+            text = self._call_gemini(prompt, max_output_tokens=1024, temperature=0.3)
             if text:
                 return text
         except Exception as e:
