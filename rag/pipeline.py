@@ -625,15 +625,24 @@ Write 3 bullets:
 
     def _call_llm(self, prompt: str) -> str:
         """Unified caller: MedGemma → Ollama → Gemini → raises RuntimeError."""
-        text = self._call_medgemma(prompt, max_tokens=400, temperature=0.2)
-        if text:
-            return text
-        text = self._call_ollama(prompt)
-        if text:
-            return text
-        text = self._call_gemini(prompt, max_output_tokens=400, temperature=0.3)
-        if text:
-            return text
+        try:
+            text = self._call_medgemma(prompt, max_tokens=400, temperature=0.2)
+            if text:
+                return text
+        except Exception as e:
+            logger.warning("MedGemma _call_llm failed: %s", e)
+        try:
+            text = self._call_ollama(prompt)
+            if text:
+                return text
+        except Exception as e:
+            logger.warning("Ollama _call_llm failed: %s", e)
+        try:
+            text = self._call_gemini(prompt, max_output_tokens=400, temperature=0.3)
+            if text:
+                return text
+        except Exception as e:
+            logger.warning("Gemini _call_llm failed: %s", e)
         raise RuntimeError("No LLM backend available")
 
     def is_out_of_scope(self, question: str) -> bool:
