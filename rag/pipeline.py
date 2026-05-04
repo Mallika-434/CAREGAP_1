@@ -327,9 +327,10 @@ class RAGPipeline:
             "generationConfig": {
                 "maxOutputTokens": max_output_tokens,
                 "temperature": temperature,
+                "thinkingConfig": {"thinkingBudget": 0},
             },
         }
-        response = requests.post(url, json=payload, timeout=15)
+        response = requests.post(url, json=payload, timeout=45)
         if response.status_code != 200:
             logger.warning("Gemini returned status %s", response.status_code)
             return None
