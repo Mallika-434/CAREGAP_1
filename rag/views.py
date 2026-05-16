@@ -10,7 +10,7 @@ from django.conf import settings
 from patients.models import Patient, Observation, Condition
 from patients.risk_engine import assess_risk
 from patients.duckdb_client import get_patient_metadata, get_patient_detail
-from .pipeline import rag_pipeline
+from .pipeline import rag_pipeline, get_gemini_call_count
 
 
 @api_view(['POST'])
@@ -60,13 +60,17 @@ def rag_status(request):
         pass
     index_path = settings.FAISS_INDEX_PATH
     index_built = ((index_path / 'knowledge.index').exists() and (index_path / 'chunks.json').exists())
-    gemini_configured = bool(getattr(settings, 'GEMINI_API_KEY', None))
+    gemini_configured = bool(getattr(settings, 'GEMINI_ENABLED', False) and getattr(settings, 'GEMINI_API_KEY', None))
+    demo_mode = getattr(settings, 'DEPLOYMENT_MODE', 'internal') == 'demo'
     return Response({
         'ollama_reachable': ollama_ok, 'ollama_url': settings.OLLAMA_BASE_URL,
         'configured_model': settings.OLLAMA_MODEL, 'available_models': ollama_models,
         'faiss_index_built': index_built,
         'gemini_configured': gemini_configured,
-        'status': 'ready' if (ollama_ok and index_built) or (index_built and gemini_configured) else 'not_ready'
+        'gemini_model': getattr(settings, 'GEMINI_MODEL', 'gemini-2.0-flash') if gemini_configured else None,
+        'gemini_calls_today': get_gemini_call_count(),
+        'demo_mode': demo_mode,
+        'status': 'ready' if (ollama_ok and index_built) or (index_built and gemini_configured) or demo_mode else 'not_ready'
     })
 
 

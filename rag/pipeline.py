@@ -24,6 +24,8 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+_gemini_calls_today: int = 0
+
 # ── Guardrails and prompt constants ───────────────────────────────────────────
 GUARDRAIL_PROMPT = (
     "You are a clinical assistant for CareGap Analytics. "
@@ -230,6 +232,12 @@ class RAGPipeline:
     def _local_llm_enabled(self) -> bool:
         return self._deployment_mode() == 'internal'
 
+    def _cloud_llm_enabled(self) -> bool:
+        return getattr(settings, 'GEMINI_ENABLED', False) and bool(self._gemini_key())
+
+    def _gemini_model(self) -> str:
+        return os.environ.get('GEMINI_MODEL') or getattr(settings, 'GEMINI_MODEL', 'gemini-2.0-flash')
+
     def _medgemma_url(self) -> str:
         if not self._local_llm_enabled():
             return ''
@@ -243,6 +251,8 @@ class RAGPipeline:
         )
 
     def _gemini_key(self) -> str | None:
+        if not getattr(settings, 'GEMINI_ENABLED', False):
+            return None
         key = os.environ.get('GEMINI_API_KEY') or getattr(settings, 'GEMINI_API_KEY', None)
         return key or None
 
@@ -320,7 +330,7 @@ class RAGPipeline:
 
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"gemini-2.0-flash:generateContent?key={gemini_key}"
+            f"{self._gemini_model()}:generateContent?key={gemini_key}"
         )
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -336,7 +346,11 @@ class RAGPipeline:
 
         data = response.json()
         try:
-            return data['candidates'][0]['content']['parts'][0]['text'].strip() or None
+            text = data['candidates'][0]['content']['parts'][0]['text'].strip() or None
+            if text:
+                global _gemini_calls_today
+                _gemini_calls_today += 1
+            return text
         except (KeyError, IndexError, TypeError):
             logger.warning("Gemini response did not contain generated text")
             return None
@@ -458,18 +472,19 @@ class RAGPipeline:
         except Exception as e:
             logger.warning("Ollama RAG call failed: %s", e)
 
-        # Cloud fallback: Gemini only when explicitly configured
-        try:
-            text = self._call_gemini(prompt, max_output_tokens=1024, temperature=0.3)
-            if text:
-                return {
-                    'query': query,
-                    'context_used': [c.get('id') for c in chunks],
-                    'suggestions': text,
-                    'model': 'gemini-fallback',
-                }
-        except Exception as e:
-            logger.warning("Gemini RAG call failed: %s", e)
+        # Cloud fallback: Gemini only when explicitly enabled and configured
+        if self._cloud_llm_enabled():
+            try:
+                text = self._call_gemini(prompt, max_output_tokens=1024, temperature=0.3)
+                if text:
+                    return {
+                        'query': query,
+                        'context_used': [c.get('id') for c in chunks],
+                        'suggestions': text,
+                        'model': 'gemini-fallback',
+                    }
+            except Exception as e:
+                logger.warning("Gemini RAG call failed: %s", e)
 
         return {
             'query':        query,
@@ -595,13 +610,14 @@ Write 3 bullets:
         except Exception as e:
             logger.warning("Ollama explain call failed: %s", e)
 
-        # Cloud fallback: Gemini only when configured
-        try:
-            text = self._call_gemini(prompt, max_output_tokens=1024, temperature=0.4)
-            if text:
-                return {"explanation": text, "source": "gemini"}
-        except Exception as e:
-            logger.warning("Gemini explain call failed: %s", e)
+        # Cloud fallback: Gemini only when explicitly enabled and configured
+        if self._cloud_llm_enabled():
+            try:
+                text = self._call_gemini(prompt, max_output_tokens=1024, temperature=0.4)
+                if text:
+                    return {"explanation": text, "source": "gemini"}
+            except Exception as e:
+                logger.warning("Gemini explain call failed: %s", e)
 
         return {"explanation": self._rule_based_explanation(explanation_type, patient_data), "source": "rule_based"}
 
@@ -639,12 +655,13 @@ Write 3 bullets:
                 return text
         except Exception as e:
             logger.warning("Ollama _call_llm failed: %s", e)
-        try:
-            text = self._call_gemini(prompt, max_output_tokens=1024, temperature=0.3)
-            if text:
-                return text
-        except Exception as e:
-            logger.warning("Gemini _call_llm failed: %s", e)
+        if self._cloud_llm_enabled():
+            try:
+                text = self._call_gemini(prompt, max_output_tokens=1024, temperature=0.3)
+                if text:
+                    return text
+            except Exception as e:
+                logger.warning("Gemini _call_llm failed: %s", e)
         raise RuntimeError("No LLM backend available")
 
     def is_out_of_scope(self, question: str) -> bool:
@@ -919,6 +936,10 @@ def _rule_based_suggestions(profile: dict) -> str:
         )
 
     return "\n\n".join(f"• {b}" for b in bullets)
+
+
+def get_gemini_call_count() -> int:
+    return _gemini_calls_today
 
 
 # Singleton instance

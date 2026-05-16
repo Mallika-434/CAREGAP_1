@@ -963,18 +963,9 @@
                 const _htnScores = { lasso: Math.round(_htn.lasso||0), rf: Math.round(_htn.random_forest||0), xgb: Math.round(_htn.gradient_boosting||0) };
                 const _t2dScores = { lasso: Math.round(_t2d.lasso||0), rf: Math.round(_t2d.random_forest||0), xgb: Math.round(_t2d.gradient_boosting||0) };
                 const _question = `This patient is ${_age} years old, ${_gender}, at-risk cohort. Disease onset risk scores: HTN ensemble ${_htnProb}% (Lasso ${_htnScores.lasso}%, RF ${_htnScores.rf}%, XGBoost ${_htnScores.xgb}%), T2D ensemble ${_t2dProb}% (Lasso ${_t2dScores.lasso}%, RF ${_t2dScores.rf}%, XGBoost ${_t2dScores.xgb}%). Average onset risk: ${_avgProb}%. Explain this to a non-technical care coordinator in 2-3 sentences. Focus on what the scores mean and what action to take.`;
-                fetch('/api/rag/ask/', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-                  body: JSON.stringify({ patient_id: od.patient_id, question: _question })
-                })
-                .then(r => r.json())
-                .then(askData => {
-                  const el = document.getElementById('inline-layman-explanation');
-                  if (el && askData.answer)
-                    el.innerHTML = `<div style="font-weight:600;color:var(--purple);margin-bottom:4px">Layman Risk Summary</div><div>${askData.answer.replace(/\n/g,'<br>')}</div>`;
-                })
-                .catch(() => { const el = document.getElementById('inline-layman-explanation'); if (el) el.style.display='none'; });
+                window.__summaryPatientId = od.patient_id;
+                window.__summaryQuestion = _question;
+                window.__summaryType = 'ask';
               })
               .catch(() => { res.innerHTML = `<div style="padding:20px;color:var(--red);text-align:center">Onset risk data unavailable.</div>`; });
             return;
@@ -1069,10 +1060,7 @@
 
             ${shapHtml}
             <div id="inline-layman-explanation" style="background:var(--bg2); border-left:4px solid var(--purple); border-radius:4px; padding:12px 16px; margin-bottom:16px; font-size:0.8rem; color:var(--text2);">
-               <div style="display:flex; align-items:center; gap:8px;">
-                  <div class="spin" style="width:12px;height:12px;border-width:2px;border-color:var(--purple) transparent var(--purple) transparent;"></div>
-                  <span style="font-style:italic;">AI generating specific layman summary...</span>
-               </div>
+              <button class="btn btn-outline" style="font-size:0.78rem;" onclick="generateLaymanSummary()">Generate AI Summary</button>
             </div>
 
             ${
@@ -1202,23 +1190,9 @@
             </div>
           `;
 
-          // Automatically trigger the AI layman explanation
-          fetch('/api/rag/explain/', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-              body: JSON.stringify({ patient_id: id, prediction_data: d })
-          })
-          .then(r => r.json())
-          .then(explainData => {
-              const el = document.getElementById('inline-layman-explanation');
-              if (el && explainData.explanation) {
-                  el.innerHTML = `<div style="font-weight:600; color:var(--purple); margin-bottom:4px">Layman Risk Summary</div><div>${explainData.explanation.replace(/\n/g, '<br>')}</div>`;
-              }
-          })
-          .catch(err => {
-              const el = document.getElementById('inline-layman-explanation');
-              if (el) el.style.display = 'none';
-          });
+          window.__summaryPatientId = id;
+          window.__summaryPredictionData = d;
+          window.__summaryType = 'explain';
         })
         .catch(err => {
           console.error(err);
@@ -1285,13 +1259,18 @@
         const faiss = data.faiss_index_built;
         const ollama = data.ollama_reachable;
         const gemini = data.gemini_configured;
+        const demoMode = data.demo_mode;
         const el = document.getElementById('ragStatus');
+        const calls = data.gemini_calls_today || 0;
         if (ollama && faiss) {
           el.classList.add('ok'); el.classList.remove('warn');
           text.textContent = 'AI: phi3 Ready';
         } else if (!ollama && faiss && gemini) {
           el.classList.add('ok'); el.classList.remove('warn');
-          text.textContent = 'AI: Gemini Ready';
+          text.textContent = `AI: Gemini (${calls} calls today)`;
+        } else if (demoMode) {
+          el.classList.add('ok'); el.classList.remove('warn');
+          text.textContent = 'AI: Demo Mode';
         } else if (faiss) {
           el.classList.remove('ok'); el.classList.add('warn');
           text.textContent = 'AI: Basic Mode';
@@ -1338,6 +1317,27 @@
         document.getElementById(loadingId).innerHTML = `<span style="color:var(--red); font-size:.85rem;">Error: ${e.message}</span>`;
       }
       history.scrollTop = history.scrollHeight;
+    }
+
+    async function generateLaymanSummary() {
+      const container = document.getElementById('inline-layman-explanation');
+      if (!container) return;
+      container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;"><div class="spin" style="width:12px;height:12px;border-width:2px;border-color:var(--purple) transparent var(--purple) transparent;"></div><span style="font-style:italic;">AI generating layman summary...</span></div>';
+      try {
+        let answer;
+        if (window.__summaryType === 'ask') {
+          const r = await fetch('/api/rag/ask/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') }, body: JSON.stringify({ patient_id: window.__summaryPatientId, question: window.__summaryQuestion }) });
+          answer = (await r.json()).answer;
+        } else {
+          const r = await fetch('/api/rag/explain/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') }, body: JSON.stringify({ patient_id: window.__summaryPatientId, prediction_data: window.__summaryPredictionData }) });
+          answer = (await r.json()).explanation;
+        }
+        container.innerHTML = answer
+          ? `<div style="font-weight:600;color:var(--purple);margin-bottom:4px">Layman Risk Summary</div><div>${answer.replace(/\n/g, '<br>')}</div>`
+          : '<span style="color:var(--text3);font-style:italic;">Summary not available.</span>';
+      } catch (e) {
+        container.innerHTML = '<span style="color:var(--red);font-size:.8rem;">Error generating summary.</span>';
+      }
     }
 
     async function explainPrediction(pid, predictionData) {
@@ -1521,10 +1521,7 @@
         </div>
 
         <div id="inline-layman-explanation" style="background:var(--bg2);border-left:4px solid var(--purple);border-radius:4px;padding:12px 16px;margin-bottom:16px;font-size:0.8rem;color:var(--text2);">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <div class="spin" style="width:12px;height:12px;border-width:2px;border-color:var(--purple) transparent var(--purple) transparent;"></div>
-            <span style="font-style:italic;">AI generating specific layman summary...</span>
-          </div>
+          <button class="btn btn-outline" style="font-size:0.78rem;" onclick="generateLaymanSummary()">Generate AI Summary</button>
         </div>
 
         <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:20px;margin-top:16px;overflow-x:auto;">
@@ -1634,4 +1631,3 @@
         </div>
       `;
     }
-
