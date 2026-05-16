@@ -1268,7 +1268,7 @@
           text.textContent = 'AI: phi3 Ready';
         } else if (!ollama && faiss && gemini) {
           el.classList.add('ok'); el.classList.remove('warn');
-          text.textContent = `AI: Gemini (${calls} calls today)`;
+          text.textContent = `AI: Gemini Ready (${calls} calls today)`;
         } else if (!ollama && faiss && groq) {
           el.classList.add('ok'); el.classList.remove('warn');
           text.textContent = 'AI: Groq Ready';

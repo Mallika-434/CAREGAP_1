@@ -11,7 +11,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+  <link rel="stylesheet" href="/static/css/dashboard.css?v={{ CACHE_BUST }}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
@@ -559,7 +559,7 @@
     </div><!-- /content -->
   </main>
 
-  <script src="{% static 'js/dashboard.js' %}"></script>
+  <script src="/static/js/dashboard.js?v={{ CACHE_BUST }}"></script>
   <!-- GLOBAL AI CHATBOT HOOKS -->
   <div class="ai-fab" id="ai-fab" onclick="toggleGlobalChat()">
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"

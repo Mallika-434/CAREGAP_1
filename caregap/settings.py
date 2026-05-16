@@ -3,6 +3,7 @@ CareGap Analytics — Django Settings
 """
 from pathlib import Path
 import os
+import time
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -54,6 +55,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'caregap.context_processors.cache_bust',
             ],
         },
     },
@@ -136,6 +138,9 @@ GEMINI_ENABLED = os.environ.get('GEMINI_ENABLED', 'True') == 'True'
 GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
 DEPLOYMENT_MODE = os.environ.get('DEPLOYMENT_MODE', 'internal').strip().lower()
+
+WHITENOISE_MAX_AGE = 0
+CACHE_BUST = str(int(time.time()))
 
 HF_API_TOKEN = os.environ.get('HF_API_TOKEN', '')
 
