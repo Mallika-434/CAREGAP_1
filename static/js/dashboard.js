@@ -1259,6 +1259,7 @@
         const faiss = data.faiss_index_built;
         const ollama = data.ollama_reachable;
         const gemini = data.gemini_configured;
+        const groq = data.groq_configured;
         const demoMode = data.demo_mode;
         const el = document.getElementById('ragStatus');
         const calls = data.gemini_calls_today || 0;
@@ -1268,6 +1269,9 @@
         } else if (!ollama && faiss && gemini) {
           el.classList.add('ok'); el.classList.remove('warn');
           text.textContent = `AI: Gemini (${calls} calls today)`;
+        } else if (!ollama && faiss && groq) {
+          el.classList.add('ok'); el.classList.remove('warn');
+          text.textContent = 'AI: Groq Ready';
         } else if (demoMode) {
           el.classList.add('ok'); el.classList.remove('warn');
           text.textContent = 'AI: Demo Mode';

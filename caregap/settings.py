@@ -132,6 +132,10 @@ OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
 OLLAMA_MODEL    = os.environ.get('OLLAMA_MODEL', 'phi3:latest')
 
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+GEMINI_ENABLED = os.environ.get('GEMINI_ENABLED', 'True') == 'True'
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash')
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
+DEPLOYMENT_MODE = os.environ.get('DEPLOYMENT_MODE', 'internal').strip().lower()
 
 HF_API_TOKEN = os.environ.get('HF_API_TOKEN', '')
 
@@ -141,3 +145,6 @@ SYNTHEA_DATA_DIR = os.environ.get(
     'SYNTHEA_DATA_DIR',
     str(BASE_DIR / 'data' / 'synthea_ca_seed43438_p30000'),
 )
+
+if DEPLOYMENT_MODE not in {'internal', 'demo'}:
+    raise RuntimeError("DEPLOYMENT_MODE must be 'internal' or 'demo'.")

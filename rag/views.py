@@ -61,6 +61,7 @@ def rag_status(request):
     index_path = settings.FAISS_INDEX_PATH
     index_built = ((index_path / 'knowledge.index').exists() and (index_path / 'chunks.json').exists())
     gemini_configured = bool(getattr(settings, 'GEMINI_ENABLED', False) and getattr(settings, 'GEMINI_API_KEY', None))
+    groq_configured = bool(getattr(settings, 'GROQ_API_KEY', None))
     demo_mode = getattr(settings, 'DEPLOYMENT_MODE', 'internal') == 'demo'
     return Response({
         'ollama_reachable': ollama_ok, 'ollama_url': settings.OLLAMA_BASE_URL,
@@ -69,8 +70,9 @@ def rag_status(request):
         'gemini_configured': gemini_configured,
         'gemini_model': getattr(settings, 'GEMINI_MODEL', 'gemini-2.0-flash') if gemini_configured else None,
         'gemini_calls_today': get_gemini_call_count(),
+        'groq_configured': groq_configured,
         'demo_mode': demo_mode,
-        'status': 'ready' if (ollama_ok and index_built) or (index_built and gemini_configured) or demo_mode else 'not_ready'
+        'status': 'ready' if (ollama_ok and index_built) or (index_built and (gemini_configured or groq_configured)) or demo_mode else 'not_ready'
     })
 
 

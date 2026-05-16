@@ -355,6 +355,21 @@ class RAGPipeline:
             logger.warning("Gemini response did not contain generated text")
             return None
 
+    def _call_groq(self, prompt: str, groq_key: str, max_tokens: int = 1024) -> str | None:
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "llama3-8b-8192",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": 0,
+        }
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        if response.status_code == 200:
+            return response.json()['choices'][0]['message']['content'].strip() or None
+        logger.warning("Groq returned status %s: %s", response.status_code, response.text[:200])
+        return None
+
     def build_index(self):
         """Build FAISS index from KNOWLEDGE_BASE. Run once via management command."""
         self._load_model()
@@ -662,6 +677,14 @@ Write 3 bullets:
                     return text
             except Exception as e:
                 logger.warning("Gemini _call_llm failed: %s", e)
+        groq_key = getattr(settings, 'GROQ_API_KEY', '') or os.environ.get('GROQ_API_KEY', '')
+        if groq_key:
+            try:
+                text = self._call_groq(prompt, groq_key)
+                if text:
+                    return text
+            except Exception as e:
+                logger.warning("Groq _call_llm failed: %s", e)
         raise RuntimeError("No LLM backend available")
 
     def is_out_of_scope(self, question: str) -> bool:
