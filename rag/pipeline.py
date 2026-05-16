@@ -17,6 +17,7 @@ Setup:
 
 import os
 import json
+import time
 import requests
 import logging
 from pathlib import Path
@@ -25,6 +26,8 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 _gemini_calls_today: int = 0
+_gemini_failures: int = 0
+_gemini_skip_until: float = 0.0
 
 # ── Guardrails and prompt constants ───────────────────────────────────────────
 GUARDRAIL_PROMPT = (
@@ -340,6 +343,14 @@ class RAGPipeline:
             },
         }
         response = requests.post(url, json=payload, timeout=45)
+        if response.status_code == 429:
+            global _gemini_failures, _gemini_skip_until
+            _gemini_failures += 1
+            if _gemini_failures >= 3:
+                _gemini_skip_until = time.time() + 3600
+                logger.warning("Gemini circuit breaker activated — skipping for 1 hour")
+            logger.warning("Gemini 429: quota exceeded (%d consecutive failures)", _gemini_failures)
+            return None
         if response.status_code != 200:
             logger.warning("Gemini returned status %s: %s", response.status_code, response.text[:300])
             return None
@@ -350,6 +361,7 @@ class RAGPipeline:
             if text:
                 global _gemini_calls_today
                 _gemini_calls_today += 1
+                _gemini_failures = 0
             return text
         except (KeyError, IndexError, TypeError):
             logger.warning("Gemini response did not contain generated text")
@@ -671,12 +683,15 @@ Write 3 bullets:
         except Exception as e:
             logger.warning("Ollama _call_llm failed: %s", e)
         if self._cloud_llm_enabled():
-            try:
-                text = self._call_gemini(prompt, max_output_tokens=1024, temperature=0.3)
-                if text:
-                    return text
-            except Exception as e:
-                logger.warning("Gemini _call_llm failed: %s", e)
+            if _gemini_skip_until > time.time():
+                logger.info("Gemini circuit breaker active, skipping to Groq")
+            else:
+                try:
+                    text = self._call_gemini(prompt, max_output_tokens=1024, temperature=0.3)
+                    if text:
+                        return text
+                except Exception as e:
+                    logger.warning("Gemini _call_llm failed: %s", e)
         groq_key = getattr(settings, 'GROQ_API_KEY', '') or os.environ.get('GROQ_API_KEY', '')
         if groq_key:
             try:
